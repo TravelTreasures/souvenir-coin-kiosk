@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hardware Simulator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111827;
+      color: #e5e7eb;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      padding: 16px;
+      user-select: none;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex; align-items: center; gap: 10px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #374151;
+      margin-bottom: 18px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #4ade80;
+           box-shadow: 0 0 8px #4ade80; flex-shrink: 0; }
+    .header h1 { font-size: 15px; font-weight: 700; }
+    .badge { font-size: 11px; color: #6b7280; margin-left: 4px; }
+
+    /* ── Section ── */
+    .section { margin-bottom: 20px; }
+    .section-title {
+      font-size: 10px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; color: #6b7280;
+      padding-bottom: 8px; margin-bottom: 10px;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    /* ── Toggle group ── */
+    .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .toggle {
+      padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+      border: 1px solid #374151; background: #1f2937; color: #9ca3af;
+      transition: all .15s;
+    }
+    .toggle.active-green  { border-color: #4ade80; background: #4ade8022; color: #4ade80; font-weight: 700; }
+    .toggle.active-red    { border-color: #f87171; background: #f8717122; color: #f87171; font-weight: 700; }
+    .toggle.active-orange { border-color: #fb923c; background: #fb923c22; color: #fb923c; font-weight: 700; }
+    .toggle.active-yellow { border-color: #facc15; background: #facc1522; color: #facc15; font-weight: 700; }
+    .toggle.active-gray   { border-color: #9ca3af; background: #9ca3af22; color: #9ca3af; font-weight: 700; }
+
+    /* ── Trigger button ── */
+    .trigger-btn {
+      width: 100%; padding: 11px; border-radius: 10px;
+      background: #1d4ed8; border: none;
+      color: #fff; font-size: 14px; font-weight: 700;
+      cursor: pointer; margin-top: 8px; transition: background .15s;
+    }
+    .trigger-btn:hover { background: #2563eb; }
+    .trigger-btn:active { background: #1e40af; }
+
+    /* ── Slider row ── */
+    .slider-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    .slider-row label { color: #9ca3af; font-size: 12px; min-width: 82px; }
+    .slider-row input[type=range] { flex: 1; }
+    .slider-row span { color: #e5e7eb; min-width: 34px; text-align: right; font-size: 13px; }
+
+    /* ── Scenario buttons ── */
+    .scenario-btn {
+      display: block; width: 100%; text-align: left;
+      padding: 8px 12px; border-radius: 8px; margin-bottom: 6px;
+      background: #1f2937; border: 1px solid #374151;
+      color: #d1d5db; font-size: 12px; cursor: pointer; transition: background .1s;
+    }
+    .scenario-btn:hover { background: #2d3748; }
+    .scenario-btn:last-child { margin-bottom: 0; }
+
+    /* ── Log ── */
+    #log {
+      background: #0f172a; border-radius: 8px; padding: 8px 10px;
+      max-height: 110px; overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
+      color: #4ade80; line-height: 1.6;
+    }
+    .log-empty { color: #374151; }
+
+    p.hint { color: #6b7280; font-size: 11px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="dot"></div>
+  <h1>Hardware Simulator <span class="badge">DEV MODE</span></h1>
+</div>
+
+<!-- ── Payment ── -->
+<div class="section">
+  <div class="section-title">Nayax Payment Terminal</div>
+  <p style="color:#9ca3af;font-size:12px;margin-bottom:8px;">Next payment response:</p>
+  <div class="toggle-group" id="payment-group">
+    <button class="toggle active-green" data-value="approved"   onclick="setPayment(this)">✓ Approved</button>
+    <button class="toggle"             data-value="declined"    onclick="setPayment(this)">✗ Declined</button>
+    <button class="toggle"             data-value="communication_error" onclick="setPayment(this)">⚡ Comm Error</button>
+  </div>
+  <button class="trigger-btn" onclick="triggerPayment()">▶  Simulate Card Tap</button>
+  <p class="hint">Click after the kiosk shows the payment screen.</p>
+</div>
+
+<!-- ── Hopper 1 ── -->
+<div class="section">
+  <div class="section-title">Hopper 1 — Coin 1</div>
+  <div class="toggle-group" id="h1-group">
+    <button class="toggle active-green" data-value="ok"      onclick="setHopper(1,this)">OK</button>
+    <button class="toggle"             data-value="empty"   onclick="setHopper(1,this)">Empty</button>
+    <button class="toggle"             data-value="jam"     onclick="setHopper(1,this)">Jam</button>
+    <button class="toggle"             data-value="offline" onclick="setHopper(1,this)">Offline</button>
+  </div>
+  <div class="slider-row">
+    <label>Coin count:</label>
+    <input type="range" min="0" max="1000" value="500" id="h1-count"
+           oninput="setCount(1,this)">
+    <span id="h1-count-label">500</span>
+  </div>
+</div>
+
+<!-- ── Hopper 2 ── -->
+<div class="section">
+  <div class="section-title">Hopper 2 — Coin 2</div>
+  <div class="toggle-group" id="h2-group">
+    <button class="toggle active-green" data-value="ok"      onclick="setHopper(2,this)">OK</button>
+    <button class="toggle"             data-value="empty"   onclick="setHopper(2,this)">Empty</button>
+    <button class="toggle"             data-value="jam"     onclick="setHopper(2,this)">Jam</button>
+    <button class="toggle"             data-value="offline" onclick="setHopper(2,this)">Offline</button>
+  </div>
+  <div class="slider-row">
+    <label>Coin count:</label>
+    <input type="range" min="0" max="1000" value="500" id="h2-count"
+           oninput="setCount(2,this)">
+    <span id="h2-count-label">500</span>
+  </div>
+</div>
+
+<!-- ── Quick Scenarios ── -->
+<div class="section">
+  <div class="section-title">Quick Test Scenarios</div>
+  <button class="scenario-btn" onclick="scenario('happy')">🟢 Happy path — both hoppers OK, payment approved</button>
+  <button class="scenario-btn" onclick="scenario('declined')">🔴 Payment declined</button>
+  <button class="scenario-btn" onclick="scenario('h1empty')">🟡 Hopper 1 empty + payment approved</button>
+  <button class="scenario-btn" onclick="scenario('h2jam')">🔴 Hopper 2 jammed</button>
+  <button class="scenario-btn" onclick="scenario('commerr')">⚡ Terminal communication error</button>
+</div>
+
+<!-- ── Log ── -->
+<div class="section">
+  <div class="section-title">Event Log</div>
+  <div id="log"><span class="log-empty">Waiting for events…</span></div>
+</div>
+
+<script>
+  const H1 = 3, H2 = 4;   // ccTalk hopper addresses (match HopperController)
+
+  // ── Logging ──────────────────────────────────────────────────
+  function addLog(msg) {
+    const el = document.getElementById('log');
+    const ts = new Date().toLocaleTimeString();
+    const line = document.createElement('div');
+    line.textContent = `[${ts}] ${msg}`;
+    if (el.querySelector('.log-empty')) el.innerHTML = '';
+    el.prepend(line);
+  }
+
+  // ── Toggle helpers ────────────────────────────────────────────
+  const colorMap = {
+    approved: 'active-green', ok: 'active-green',
+    declined: 'active-red',
+    communication_error: 'active-orange',
+    empty: 'active-yellow',
+    jam: 'active-red',
+    offline: 'active-gray'
+  };
+
+  function activateToggle(groupId, value) {
+    document.querySelectorAll(`#${groupId} .toggle`).forEach(btn => {
+      btn.className = 'toggle';
+      if (btn.dataset.value === value) {
+        btn.classList.add(colorMap[value] || 'active-green');
+      }
+    });
+  }
+
+  // ── Payment ───────────────────────────────────────────────────
+  let paymentResult = 'approved';
+
+  function setPayment(btn) {
+    paymentResult = btn.dataset.value;
+    window.sim.setPaymentResult(paymentResult);
+    activateToggle('payment-group', paymentResult);
+    addLog(`Payment result set → ${paymentResult}`);
+  }
+
+  function triggerPayment() {
+    window.sim.triggerPayment();
+    addLog(`▶ Card tap triggered (${paymentResult})`);
+  }
+
+  // ── Live updates from the kiosk (e.g. coin dispensed) ─────────
+  if (window.sim.onHopperUpdate) {
+    window.sim.onHopperUpdate((d) => {
+      const num = d.address === H1 ? 1 : d.address === H2 ? 2 : null;
+      if (!num) return;
+      if (typeof d.coinCount === 'number') {
+        const slider = document.getElementById(`h${num}-count`);
+        const label = document.getElementById(`h${num}-count-label`);
+        if (slider) slider.value = d.coinCount;
+        if (label) label.textContent = d.coinCount;
+      }
+      if (d.status) activateToggle(`h${num}-group`, d.status);
+      addLog(`Hopper ${num} → ${d.status} · ${d.coinCount} coins`);
+    });
+  }
+
+  // ── Hoppers ───────────────────────────────────────────────────
+  function setHopper(num, btn) {
+    const status = btn.dataset.value;
+    const addr = num === 1 ? H1 : H2;
+    window.sim.setHopperStatus(addr, status);
+    activateToggle(`h${num}-group`, status);
+    addLog(`Hopper ${num} status → ${status}`);
+  }
+
+  function setCount(num, input) {
+    const count = parseInt(input.value);
+    const addr = num === 1 ? H1 : H2;
+    document.getElementById(`h${num}-count-label`).textContent = count;
+    window.sim.setHopperCoinCount(addr, count);
+    addLog(`Hopper ${num} coin count → ${count}`);
+  }
+
+  // ── Scenarios ─────────────────────────────────────────────────
+  function scenario(name) {
+    switch (name) {
+      case 'happy':
+        window.sim.setPaymentResult('approved'); paymentResult = 'approved';
+        window.sim.setHopperStatus(H1, 'ok'); window.sim.setHopperStatus(H2, 'ok');
+        activateToggle('payment-group','approved');
+        activateToggle('h1-group','ok'); activateToggle('h2-group','ok');
+        addLog('🟢 Scenario: Happy path'); break;
+      case 'declined':
+        window.sim.setPaymentResult('declined'); paymentResult = 'declined';
+        activateToggle('payment-group','declined');
+        addLog('🔴 Scenario: Declined'); break;
+      case 'h1empty':
+        window.sim.setHopperStatus(H1,'empty'); window.sim.setPaymentResult('approved');
+        paymentResult = 'approved';
+        activateToggle('h1-group','empty'); activateToggle('payment-group','approved');
+        addLog('🟡 Scenario: Hopper 1 empty + approved'); break;
+      case 'h2jam':
+        window.sim.setHopperStatus(H2,'jam');
+        activateToggle('h2-group','jam');
+        addLog('🔴 Scenario: Hopper 2 jammed'); break;
+      case 'commerr':
+        window.sim.setPaymentResult('communication_error'); paymentResult = 'communication_error';
+        activateToggle('payment-group','communication_error');
+        addLog('⚡ Scenario: Comm error'); break;
+    }
+  }
+</script>
+</body>
+</html>

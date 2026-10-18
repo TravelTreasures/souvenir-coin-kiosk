@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local environment overrides
+.env
+.env.local
+
+# Central fleet server runtime data
+central-server/data/
+central-server/node_modules/
+
+# Local kiosk runtime data (created at runtime in userData, not the repo,
+# but ignore here too in case anyone points data at the project folder)
+kiosk.db
+kiosk-config.json
+app-mode.json

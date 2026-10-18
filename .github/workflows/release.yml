@@ -1,0 +1,48 @@
+name: Build & publish kiosk (OTA feed)
+
+# Triggers:
+#   • push a tag like v1.20.0  → builds the Linux AppImage and publishes it +
+#     the update feed (stable-linux.yml + .blockmap) to a GitHub Release.
+#   • manual run (workflow_dispatch) for testing.
+#
+# The kiosks then read that release as their OTA feed via:
+#   https://github.com/<OWNER>/<REPO>/releases/latest/download/
+# (set that URL on the dashboard → Updates → Feed URL).
+#
+# No secrets to configure: GITHUB_TOKEN is provided automatically; the
+# permissions block below lets it create the release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # serialport / better-sqlite3 are native modules; libudev-dev is needed to
+      # build serialport on Linux. build-essential + python3 ship on the runner.
+      - name: Install native build deps
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build & publish AppImage + update feed to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run publish:linux

@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Souvenir Coin Kiosk — Fleet Admin</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{--bg:#0a1628;--panel:#11203f;--panel2:#0f1c38;--gold:#c9a227;--gold-l:#e8c04a;--white:#f5f5f5;--dim:#9fb0c8;--green:#4caf50;--red:#e53935;--amber:#e0a020;--line:rgba(255,255,255,.08)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--white);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif}
+  a{color:inherit;text-decoration:none}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+  .brand{font-size:1.15rem;font-weight:800;color:var(--gold-l)}
+  .brand small{color:var(--dim);font-weight:500;font-size:.8rem;margin-left:8px}
+  .wrap{max-width:1200px;margin:0 auto;padding:24px 28px}
+  .crumbs{color:var(--dim);font-size:.85rem;margin-bottom:18px}
+  .crumbs a{color:var(--gold-l);cursor:pointer}
+  .grid{display:grid;gap:16px}
+  .cards{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+  .metrics{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .kcard{cursor:pointer;transition:border-color .15s,transform .15s}
+  .kcard:hover{border-color:rgba(201,162,39,.6);transform:translateY(-2px)}
+  .khead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
+  .kname{font-weight:700;font-size:1.05rem}
+  .kloc{color:var(--dim);font-size:.82rem;margin-top:2px}
+  .pill{font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .on{background:rgba(76,175,80,.15);color:var(--green)}
+  .off{background:rgba(229,57,53,.15);color:var(--red)}
+  .st-active{color:var(--green)} .st-maintenance{color:var(--amber)} .st-out_of_service{color:var(--red)}
+  .kmetrics{display:flex;gap:18px;margin-top:14px;flex-wrap:wrap}
+  .kmetrics div{font-size:.8rem;color:var(--dim)}
+  .kmetrics b{display:block;color:var(--white);font-size:1.2rem;font-weight:700;margin-top:2px}
+  .label{color:var(--dim);font-size:.8rem;margin-bottom:6px}
+  .val{font-size:1.5rem;font-weight:700}
+  .tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin:18px 0 20px}
+  .tab{padding:9px 18px;background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);cursor:pointer;font-size:.92rem}
+  .tab.active{color:var(--gold-l);border-bottom-color:var(--gold);font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:.84rem}
+  th{text-align:left;color:var(--gold-l);padding:9px 11px;border-bottom:1px solid rgba(201,162,39,.3)}
+  td{padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .dim{color:var(--dim)} .mono{font-family:monospace;font-size:.78rem} .ok{color:var(--green)} .err{color:var(--red)}
+  .badge{background:var(--red);color:#fff;border-radius:999px;padding:1px 8px;font-size:.7rem;font-weight:700;margin-left:6px}
+  button.btn{background:linear-gradient(135deg,var(--gold),#a07d15);border:none;color:#fff;padding:10px 22px;border-radius:10px;cursor:pointer;font-weight:700}
+  button.ghost{background:none;border:1px solid rgba(201,162,39,.4);color:var(--gold-l);padding:8px 16px;border-radius:10px;cursor:pointer}
+  input,select{background:rgba(255,255,255,.06);border:1px solid rgba(201,162,39,.4);border-radius:9px;color:var(--white);padding:9px 12px;font-size:.95rem}
+  .pills{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .pchip{padding:7px 16px;border-radius:9px;border:1px solid var(--line);background:none;color:var(--dim);cursor:pointer}
+  .pchip.active{border-color:var(--gold);background:rgba(201,162,39,.15);color:var(--gold-l)}
+  .login{max-width:360px;margin:90px auto;text-align:center}
+  .login input{width:100%;margin:14px 0}
+  .hide{display:none}
+  .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .between{justify-content:space-between}
+  .hopbar{height:8px;border-radius:6px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:6px}
+  .hopbar>div{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l))}
+  .muted{color:var(--dim);font-size:.85rem}
+  .empty{padding:30px;text-align:center;color:var(--dim)}
+</style>
+</head>
+<body>
+<div id="login" class="login">
+  <div class="brand" style="font-size:1.5rem">Fleet Admin</div>
+  <p class="muted" style="margin:6px 0 4px">Souvenir Coin Kiosk — Central Dashboard</p>
+  <input type="text" id="user" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('pw').focus()"/>
+  <input type="password" id="pw" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"/>
+  <div id="lerr" class="err" style="min-height:20px"></div>
+  <button class="btn" style="width:100%" onclick="login()">Sign In</button>
+</div>
+
+<div id="app" class="hide">
+  <div class="topbar">
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin</small></div>
+    <div class="row">
+      <span id="whoami" class="muted"></span>
+      <span id="liveDot" class="pill on">● live</span>
+      <button class="ghost" onclick="logout()">Sign out</button>
+    </div>
+  </div>
+  <div class="wrap" id="view"></div>
+</div>
+
+<script>
+let token=null, view={name:'fleet'}, timer=null, me=null;
+const admin=()=>me&&me.role==='admin';
+
+async function api(p,opts={}){
+  const r=await fetch(p,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...(opts.headers||{})}});
+  if(r.status===401){token=null;showLogin();throw new Error('unauth')}
+  return r.json();
+}
+const rand=c=>'R'+((c||0)/100).toFixed(2);
+const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const ago=ts=>{if(!ts)return'never';const s=Math.floor((Date.now()-new Date(ts).getTime())/1000);if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'};
+const stLabel=s=>({active:'Active',maintenance:'Maintenance',out_of_service:'Out of Service'}[s]||s);
+
+function showLogin(){document.getElementById('login').classList.remove('hide');document.getElementById('app').classList.add('hide');if(timer)clearInterval(timer)}
+function showApp(){document.getElementById('login').classList.add('hide');document.getElementById('app').classList.remove('hide')}
+async function login(){
+  const username=document.getElementById('user').value;
+  const pw=document.getElementById('pw').value;
+  const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password:pw})});
+  const d=await r.json();
+  if(d.token){token=d.token;me={username:d.username,role:d.role};document.getElementById('whoami').textContent=d.username+' · '+d.role;showApp();go({name:'fleet'});timer=setInterval(refresh,8000)}
+  else document.getElementById('lerr').textContent=d.error||'Login failed';
+}
+function logout(){token=null;showLogin()}
+
+function go(v){view=v;render()}
+function refresh(){
+  if(!token) return;
+  // Don't auto-rebuild while the user is editing a field (it would wipe input).
+  const ae=document.activeElement;
+  if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
+  // Skip views with charts, file pickers, or editing forms to avoid flicker /
+  // losing a selected file or half-filled form (these config screens don't need
+  // an 8-second live refresh).
+  if(view.name==='global' || view.name==='images' || view.name==='users' || view.name==='operators' || view.name==='destinations' || view.name==='pricing' || view.name==='updates' || (view.name==='kiosk' && ['sales','transactions','marketing','inventory'].includes(kioskTab))) return;
+  // Preserve the scroll position across the rebuild so an auto-refresh doesn't
+  // jump the page back to the top while the user is reading further down.
+  const y=window.scrollY;
+  // Restore after the full view (incl. async sub-content) is in place and laid out.
+  Promise.resolve(render(true)).then(()=>{
+    requestAnimationFrame(()=>{ if(Math.abs(window.scrollY-y)>2) window.scrollTo(0,y); });
+  });
+}
+
+async function render(isAuto){
+  const el=document.getElementById('view');
+  if(view.name==='fleet') return renderFleet(el,isAuto);
+  if(view.name==='kiosk') return renderKiosk(el,view.id,isAuto);
+  if(view.name==='global') return renderGlobal(el,isAuto);
+  if(view.name==='pricing') return renderPricing(el,isAuto);
+  if(view.name==='users') return renderUsers(el);
+  if(view.name==='operators') return renderOperators(el);
+  if(view.name==='images') return renderImages(el);
+  if(view.name==='monitoring') return renderMonitoring(el);
+  if(view.name==='destinations') return renderDestinations(el);
+  if(view.name==='updates') return renderUpdates(el);
+  if(view.name==='audit') return renderAudit(el);
+}
+
+/* ---------- AUDIT LOG + BACKUP (admin only) ---------- */
+function auditLabel(e){
+  const p=e.path.replace('/api/','');
+  const map={POST:'created',PATCH:'updated',DELETE:'deleted',PUT:'updated'};
+  return (map[e.method]||e.method)+' '+p;
+}
+async function renderAudit(el){
+  if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
+  const rows=await api('/api/audit?limit=300');
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Audit & Backup</div>
+    <div class="row between">
+      <h2 style="font-size:1.4rem">Audit log</h2>
+      <a class="ghost" style="text-decoration:none;padding:8px 16px" href="/api/backup" onclick="downloadBackup(event)">⤓ Download backup</a>
+    </div>
+    <p class="muted" style="margin:6px 0 16px">Every admin change is recorded here. The backup downloads the full fleet dataset (kiosks, settings, transactions, users) as a JSON file.</p>
+    <div class="card"><table>
+      <thead><tr><th>When</th><th>User</th><th>Role</th><th>Action</th></tr></thead>
+      <tbody>${rows.length?rows.map(e=>`<tr>
+        <td class="dim">${esc(e.at.replace('T',' ').substring(0,19))}</td>
+        <td>${esc(e.user)}</td>
+        <td class="dim">${esc(e.role)}</td>
+        <td class="mono">${esc(auditLabel(e))}</td>
+      </tr>`).join(''):'<tr><td colspan=4 class="empty">No activity recorded yet.</td></tr>'}
+      </tbody></table></div>`;
+}
+async function downloadBackup(ev){
+  ev.preventDefault();
+  const r=await fetch('/api/backup',{headers:{'Authorization':'Bearer '+token}});
+  if(!r.ok){alert('Backup failed');return}
+  const blob=await r.blob();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-').substring(0,19);
+  a.download='fleet-backup-'+stamp+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+
+/* ---------- DESTINATIONS (admin only) ---------- */
+async function renderDestinations(el){
+  if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
+  const [dests,kiosks]=await Promise.all([api('/api/destinations'),api('/api/kiosks')]);
+  const kiosksOf=name=>kiosks.filter(k=>k.destination===name).map(k=>k.name);
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Destinations</div>
+    <h2 style="font-size:1.4rem;margin-bottom:6px">Destinations</h2>
+    <p class="muted" style="margin-bottom:6px">A destination is a <b>location group</b> (e.g. Cape Town) that kiosks belong to. It's used to organise the fleet and power "Revenue by Location" in reports.</p>
+    <p class="muted" style="margin-bottom:18px">This page manages the <b>list</b> of destinations. To put a kiosk in one, open the kiosk → <b>Overview</b> → <b>Destination</b> dropdown → Save.</p>
+    <div class="card" style="max-width:520px;margin-bottom:20px">
+      <div class="label">Add destination</div>
+      <div class="row" style="margin-top:10px"><input id="nd_name" placeholder="Name (e.g. Garden Route)" style="flex:1"/><button class="btn" onclick="addDest()">Add</button><span id="nd_msg" class="ok"></span></div>
+    </div>
+    <div class="card"><table>
+      <thead><tr><th>Name</th><th>ID</th><th>Assigned kiosks</th><th>Actions</th></tr></thead>
+      <tbody>${dests.map(d=>{const ks=kiosksOf(d.name);return `<tr>
+        <td><input value="${esc(d.name)}" id="dn_${d.id}" style="width:180px"/></td>
+        <td class="mono">${esc(d.id)}</td>
+        <td>${ks.length?ks.map(n=>esc(n)).join(', '):'<span class="muted">none yet</span>'}</td>
+        <td><div class="row">
+          <button class="ghost" onclick="renameDest('${d.id}')">Save</button>
+          <button class="ghost" style="border-color:var(--red);color:var(--red)" onclick="delDest('${d.id}',${d.kioskCount})">Delete</button>
+          <span id="dm_${d.id}" class="ok"></span>
+        </div></td>
+      </tr>`}).join('')}</tbody>
+    </table></div>`;
+}
+async function addDest(){
+  const name=document.getElementById('nd_name').value.trim();
+  if(!name){document.getElementById('nd_msg').textContent='Enter a name';return}
+  const r=await api('/api/destinations',{method:'POST',body:JSON.stringify({name})});
+  document.getElementById('nd_msg').textContent=r.error||'Added';if(!r.error)render();
+}
+async function renameDest(id){
+  const name=document.getElementById('dn_'+id).value.trim();
+  await api('/api/destinations/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});
+  document.getElementById('dm_'+id).textContent='Saved';setTimeout(()=>{const e=document.getElementById('dm_'+id);if(e)e.textContent=''},1500);
+}
+async function delDest(id,count){
+  if(count>0){alert('This destination is used by '+count+' kiosk(s). Reassign them first.');return}
+  if(!confirm('Delete destination '+id+'?'))return;
+  const r=await api('/api/destinations/'+encodeURIComponent(id),{method:'DELETE'});
+  if(r.error)alert(r.error);render();
+}
+
+/* ---------- MONITORING (alerts + settings) ---------- */
+async function renderMonitoring(el){
+  const [alerts,settings]=await Promise.all([api('/api/system-alerts'),api('/api/settings')]);
+  const typeLabel=t=>t==='offline'?'Offline':t.startsWith('low_coin')?'Low coin':t;
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Monitoring</div>
+    <h2 style="font-size:1.4rem;margin-bottom:6px">Monitoring & Alerts</h2>
+    <p class="muted" style="margin-bottom:18px">The fleet is checked every minute. Alerts open automatically and clear themselves when the condition is resolved (kiosk back online, hopper refilled).</p>
+    <div class="card" style="margin-bottom:20px">
+      <div class="label">Active alerts (${alerts.length})</div>
+      ${alerts.length?`<table style="margin-top:8px"><thead><tr><th>When</th><th>Kiosk</th><th>Type</th><th>Detail</th><th></th></tr></thead><tbody>
+        ${alerts.map(a=>`<tr>
+          <td class="dim">${esc((a.createdAt||'').substring(0,19))}</td>
+          <td>${esc(a.kioskName)}</td>
+          <td><span class="pill" style="background:${a.type==='offline'?'rgba(229,57,53,.15)':'rgba(224,160,32,.15)'};color:${a.type==='offline'?'var(--red)':'var(--amber)'}">${typeLabel(a.type)}</span></td>
+          <td>${esc(a.message)}</td>
+          <td>${admin()?`<button class="ghost" onclick="ackAlert(${a.id})">Acknowledge</button>`:'<span class="muted">—</span>'}</td>
+        </tr>`).join('')}
+      </tbody></table>`:'<div style="padding:24px 0;color:var(--green)">✓ All clear — no active alerts.</div>'}
+    </div>
+    ${admin()?`<div class="card" style="max-width:560px">
+      <div class="label">Alert settings</div>
+      <div class="row" style="margin-top:12px"><label class="muted" style="width:170px">Low-coin threshold</label>
+        <input type="number" id="set_low" min="0" step="1" value="${settings.lowCoinThreshold}" style="width:110px"/><span class="muted">coins</span></div>
+      <div class="row" style="margin-top:10px"><label class="muted" style="width:170px">Offline after</label>
+        <input type="number" id="set_off" min="1" step="1" value="${settings.offlineMinutes}" style="width:110px"/><span class="muted">minutes</span></div>
+      <div class="row" style="margin-top:10px"><label class="muted" style="width:170px">Webhook URL</label>
+        <input type="text" id="set_hook" placeholder="https://hooks.slack.com/… (optional)" value="${esc(settings.webhookUrl||'')}" style="flex:1"/></div>
+      <p class="muted" style="font-size:.8rem;margin-top:8px">Webhook receives a JSON POST <code>{text, alert}</code> on each new alert — works with Slack/Teams/Telegram-style incoming webhooks or any HTTP endpoint.</p>
+      <div style="margin-top:12px"><button class="btn" onclick="saveSettings()">Save settings</button><span id="setmsg" class="ok"></span></div>
+    </div>`:''}`;
+}
+async function ackAlert(id){await api('/api/system-alerts/ack',{method:'POST',body:JSON.stringify({id})});render()}
+async function saveSettings(){
+  const body=JSON.stringify({
+    lowCoinThreshold:parseInt(document.getElementById('set_low').value)||0,
+    offlineMinutes:parseInt(document.getElementById('set_off').value)||5,
+    webhookUrl:document.getElementById('set_hook').value
+  });
+  await api('/api/settings',{method:'PUT',body});
+  document.getElementById('setmsg').textContent='Saved';
+  setTimeout(()=>{document.getElementById('setmsg').textContent=''},1500);
+}
+
+/* ---------- COIN IMAGES (admin only) — per kiosk ---------- */
+let _imgKiosk=null;          // currently selected kiosk id
+let _preview={1:null,2:null}; // pending upload preview per slot
+async function renderImages(el){
+  if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
+  const kiosks=await api('/api/kiosks');
+  if(!_imgKiosk || !kiosks.find(k=>k.id===_imgKiosk)) _imgKiosk=kiosks[0]?.id||null;
+  const k=kiosks.find(x=>x.id===_imgKiosk);
+  const versions=_imgKiosk?await api('/api/images?kioskId='+encodeURIComponent(_imgKiosk)):[];
+  const slotBlock=(s)=>{
+    const current=k && k.coinImages && k.coinImages[s];
+    const hist=versions.filter(i=>i.slot===s);
+    return `<div class="card" style="margin-bottom:18px">
+      <div class="row between"><div class="label">Coin ${s}</div>
+        <div>${current?`<img src="${current.url}" style="width:54px;height:54px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.05)"/>`:'<span class="muted">showing bundled default</span>'}</div></div>
+      <div class="row" style="margin:12px 0">
+        <input type="file" accept="image/png,image/jpeg" onchange="previewImg(${s},this)"/>
+        ${_preview[s]?`<img src="${_preview[s].url}" style="width:60px;height:60px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.05)"/>`:''}
+        <button class="btn" onclick="uploadImg(${s})">Upload &amp; apply</button>
+        <span id="uimsg${s}" class="ok"></span>
+      </div>
+      ${hist.length?`<div class="label" style="margin-top:6px">Version history — click to revert</div>
+      <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
+        ${hist.map(i=>`<div style="text-align:center">
+          <img src="${i.url}" title="${esc((i.uploadedAt||'').substring(0,19))} by ${esc(i.uploadedBy||'')}" style="width:54px;height:54px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.05);border:${current&&current.id===i.id?'2px solid var(--gold)':'1px solid var(--line)'}"/>
+          <div><button class="ghost" style="padding:4px 10px;font-size:.78rem" onclick="assignImg(${i.id})">${current&&current.id===i.id?'current':'use'}</button></div>
+        </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  };
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Coin Images</div>
+    <h2 style="font-size:1.4rem;margin-bottom:6px">Coin Images — per kiosk</h2>
+    <p class="muted" style="margin-bottom:16px">Each kiosk has its own Coin 1 and Coin 2. Pick a kiosk, choose any picture of the coin, and press <b>Upload &amp; apply</b> — it publishes to that kiosk only and the kiosk picks it up on its next sync. Revert by clicking an older version.</p>
+    <p class="muted" style="margin-bottom:16px;font-size:.82rem">The image is prepared automatically: the plain background is trimmed off, the coin is centred, cut to a circle and made transparent. The kiosk then displays it with the standard coin treatment — a full 3D spin every 8s with the reeded edge and matching shadow. The round preview below is exactly what the kiosk will show. <b>Tip:</b> a face-on picture on a plain background works best. Leave a coin unset to use the bundled default artwork.</p>
+    <div class="row" style="margin-bottom:18px">
+      <label class="muted">Kiosk</label>
+      <select onchange="_imgKiosk=this.value;_preview={1:null,2:null};render()">
+        ${kiosks.map(x=>`<option value="${x.id}" ${x.id===_imgKiosk?'selected':''}>${esc(x.name)}</option>`).join('')}
+      </select>
+      ${k?`<span class="muted">${esc(k.location||k.destination)}</span>`:''}
+      ${k?(k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending sync</span>'):''}
+    </div>
+    ${k?slotBlock(1)+slotBlock(2):'<div class="empty">No kiosks yet. Add one from the Fleet view.</div>'}
+    <div class="card">
+      <div class="label">Coins across the fleet</div>
+      <table><thead><tr><th>Kiosk</th><th>Coin 1</th><th>Coin 2</th><th>Sync</th></tr></thead><tbody>
+      ${kiosks.map(x=>`<tr style="cursor:pointer" onclick="_imgKiosk='${x.id}';render()"><td>${esc(x.name)}</td>
+        <td>${x.coinImages&&x.coinImages[1]?`<img src="${x.coinImages[1].url}" style="width:40px;height:40px;border-radius:50%;object-fit:contain"/>`:'<span class="muted">default</span>'}</td>
+        <td>${x.coinImages&&x.coinImages[2]?`<img src="${x.coinImages[2].url}" style="width:40px;height:40px;border-radius:50%;object-fit:contain"/>`:'<span class="muted">default</span>'}</td>
+        <td>${x.synced?'<span class="pill on">✓</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">●</span>'}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+}
+/* Turn ANY uploaded picture into a kiosk-ready coin face: trim the plain
+   background, centre it, cut it to a circle and make the outside transparent.
+   That way an operator just picks a file — the kiosk then spins it with the
+   standard 3D coin treatment (rim, thickness, shadow). */
+function processCoinImage(dataUrl){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onerror=()=>reject(new Error('bad image'));
+    img.onload=()=>{
+      const W=img.naturalWidth,H=img.naturalHeight;
+      const c=document.createElement('canvas'); c.width=W; c.height=H;
+      const x=c.getContext('2d',{willReadFrequently:true}); x.drawImage(img,0,0);
+      const d=x.getImageData(0,0,W,H).data;
+      const at=(X,Y)=>{const i=(Y*W+X)*4;return [d[i],d[i+1],d[i+2],d[i+3]]};
+      const near=(p,q,t)=>Math.abs(p[0]-q[0])<t&&Math.abs(p[1]-q[1])<t&&Math.abs(p[2]-q[2])<t;
+      const corners=[at(0,0),at(W-1,0),at(0,H-1),at(W-1,H-1)];
+      const bg=corners[0];
+      const plain=corners.every(cc=>near(cc,bg,26));
+      let x0=0,y0=0,x1=W-1,y1=H-1;
+      if(plain){
+        const isBg=(X,Y)=>{const p=at(X,Y);return p[3]<12||near(p,bg,30)};
+        const rowBg=Y=>{for(let X=0;X<W;X+=2) if(!isBg(X,Y)) return false; return true};
+        const colBg=X=>{for(let Y=0;Y<H;Y+=2) if(!isBg(X,Y)) return false; return true};
+        while(y0<y1&&rowBg(y0))y0++;  while(y1>y0&&rowBg(y1))y1--;
+        while(x0<x1&&colBg(x0))x0++;  while(x1>x0&&colBg(x1))x1--;
+      }
+      const w=x1-x0+1,h=y1-y0+1,box=Math.max(w,h);
+      const S=Math.min(640,Math.max(160,box));
+      const out=document.createElement('canvas'); out.width=out.height=S;
+      const o=out.getContext('2d');
+      o.save(); o.beginPath(); o.arc(S/2,S/2,S/2-1,0,Math.PI*2); o.clip();
+      const k=S/box, dw=w*k, dh=h*k;
+      o.drawImage(img,x0,y0,w,h,(S-dw)/2,(S-dh)/2,dw,dh);
+      o.restore();
+      resolve(out.toDataURL('image/png'));
+    };
+    img.src=dataUrl;
+  });
+}
+function previewImg(slot,input){
+  const f=input.files[0]; if(!f)return;
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    let url=reader.result, mime='image/png';
+    try{ url=await processCoinImage(reader.result); }
+    catch(e){ mime=f.type; }   // fall back to the raw file if it can't be read
+    _preview[slot]={url, mime, name:(f.name||'coin').replace(/\.[^.]+$/,'')+'.png'};
+    render();
+  };
+  reader.readAsDataURL(f);
+}
+async function uploadImg(slot){
+  const p=_preview[slot];
+  if(!p){document.getElementById('uimsg'+slot).textContent='Choose a file first';return}
+  if(!_imgKiosk){document.getElementById('uimsg'+slot).textContent='Select a kiosk first';return}
+  const dataBase64=p.url.split(',')[1];
+  const r=await api('/api/images',{method:'POST',body:JSON.stringify({kioskId:_imgKiosk,slot,name:p.name,mime:p.mime,dataBase64})});
+  _preview[slot]=null;
+  document.getElementById('uimsg'+slot).textContent=r.error||'Applied to this kiosk';
+  setTimeout(()=>render(),700);
+}
+async function assignImg(id){
+  await api('/api/images/assign',{method:'POST',body:JSON.stringify({imageId:id,kioskId:_imgKiosk})});
+  setTimeout(()=>render(),400);
+}
+
+/* ---------- USERS (admin only) ---------- */
+/* ---------- SOFTWARE UPDATES (OTA, admin only) ---------- */
+function otaBadge(s){
+  const map={successful:['●','var(--green)'],failed:['●','var(--red)'],idle:['○','var(--dim)'],pending:['◔','var(--gold)'],checking:['◔','var(--gold)'],downloading:['◑','var(--gold)'],installing:['◕','var(--gold)']};
+  const [dot,col]=map[s]||['○','var(--dim)'];
+  return `<span class="pill" style="color:${col};border:1px solid ${col}">${dot} ${esc(s||'idle')}</span>`;
+}
+async function renderUpdates(el){
+  if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
+  const [kiosks,releases,settings]=await Promise.all([api('/api/kiosks'),api('/api/releases'),api('/api/settings')]);
+  const relOpts=releases.map(r=>`<option value="${esc(r.version)}">${esc(r.version)} (${esc(r.channel)})</option>`).join('')||'<option value="">— no versions registered —</option>';
+  const kioskOpts=kiosks.map(k=>`<option value="${esc(k.id)}">${esc(k.name)}</option>`).join('');
+  el.innerHTML=`
+   <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Software Updates</div>
+   <h2 style="font-size:1.4rem;margin-bottom:6px">Software Updates (OTA)</h2>
+   <p class="muted" style="margin:0 0 16px">Push new kiosk app versions over the air. Updates install only inside the window below (default 02:00–04:00, kiosk local time) and never during a sale.</p>
+
+   <div class="card" style="max-width:740px;margin-bottom:16px">
+     <div class="label">Update feed &amp; window — fleet-wide default</div>
+     <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px">
+       <input id="ota_feed" placeholder="Feed URL (https://…/kiosk/stable/)" style="width:370px" value="${esc(settings.otaFeedUrl||'')}"/>
+       <input id="ota_channel" placeholder="channel" style="width:90px" value="${esc(settings.otaChannel||'stable')}"/>
+     </div>
+     <div class="row" style="margin-top:10px;gap:10px;align-items:center;flex-wrap:wrap">
+       <span class="muted">Window</span>
+       <input id="ota_ws" style="width:70px" value="${esc(settings.otaWindowStart||'02:00')}"/>
+       <span class="muted">to</span>
+       <input id="ota_we" style="width:70px" value="${esc(settings.otaWindowEnd||'04:00')}"/>
+       <label style="margin-left:8px"><input type="checkbox" id="ota_en" ${settings.otaWindowEnabled!==false?'checked':''}/> enforce window</label>
+       <button class="btn" onclick="saveOta()">Save</button>
+       <span id="ota_msg" class="ok"></span>
+     </div>
+   </div>
+
+   <div class="card" style="max-width:740px;margin-bottom:16px">
+     <div class="label">Deploy a version</div>
+     <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
+       <select id="dep_ver">${relOpts}</select>
+       <select id="dep_target"><option value="__all__">All kiosks</option>${kioskOpts}</select>
+       <button class="btn" onclick="deployOta()">Deploy</button>
+       <button class="ghost" onclick="updateNowOta()">Update now (bypass window)</button>
+       <span id="dep_msg" class="ok"></span>
+     </div>
+   </div>
+
+   <div class="card" style="max-width:740px;margin-bottom:16px">
+     <div class="label">Version registry</div>
+     <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+       <input id="nr_ver" placeholder="1.20.0" style="width:110px"/>
+       <input id="nr_ch" placeholder="stable" style="width:90px" value="stable"/>
+       <input id="nr_notes" placeholder="release notes" style="width:270px"/>
+       <button class="btn" onclick="addRelease()">Add</button>
+       <span id="nr_msg" class="ok"></span>
+     </div>
+     <table style="margin-top:12px"><thead><tr><th>Version</th><th>Channel</th><th>Notes</th><th>Added</th><th></th></tr></thead><tbody>
+       ${releases.map(r=>`<tr><td class="mono">${esc(r.version)}</td><td>${esc(r.channel)}</td><td class="dim">${esc(r.notes||'')}</td><td class="dim">${esc((r.createdAt||'').substring(0,10))}</td><td><button class="ghost" onclick="delRelease(${r.id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">No versions registered yet.</td></tr>'}
+     </tbody></table>
+   </div>
+
+   <div class="card"><table>
+     <thead><tr><th>Kiosk</th><th>Current</th><th>Target</th><th>Status</th><th>Window</th><th>Last update</th><th>Actions</th></tr></thead>
+     <tbody>${kiosks.map(k=>`<tr>
+       <td><b>${esc(k.name)}</b><div class="dim">${esc(k.location||'')}</div></td>
+       <td class="mono">${esc(k.currentVersion||'—')}</td>
+       <td class="mono">${k.targetVersion?esc(k.targetVersion):'<span class="dim">—</span>'}</td>
+       <td>${otaBadge(k.updateStatus)}${k.updateError?`<div class="err" style="font-size:.7rem">${esc(k.updateError)}</div>`:''}</td>
+       <td class="dim">${k.updateWindowEnabled?`${esc(k.updateWindowStart)}–${esc(k.updateWindowEnd)}`:'off'}${k.updateWindowOverride?' *':''}</td>
+       <td class="dim">${k.lastUpdateAt?esc(String(k.lastUpdateAt).substring(0,16).replace('T',' ')):'—'}</td>
+       <td><div class="row">
+         <button class="ghost" onclick="updateNowOta('${esc(k.id)}')">Update now</button>
+         <button class="ghost" onclick="rollbackOta('${esc(k.id)}')">Rollback</button>
+         <button class="ghost" onclick="windowOta('${esc(k.id)}')">Window</button>
+       </div></td>
+     </tr>`).join('')||'<tr><td colspan="7" class="muted">No kiosks yet.</td></tr>'}</tbody>
+   </table><p class="muted" style="font-size:.75rem;margin-top:8px">* = this kiosk has its own window override. Status updates arrive with each kiosk heartbeat.</p></div>`;
+}
+async function saveOta(){
+  const body={otaFeedUrl:document.getElementById('ota_feed').value.trim(),otaChannel:document.getElementById('ota_channel').value.trim()||'stable',otaWindowStart:document.getElementById('ota_ws').value.trim(),otaWindowEnd:document.getElementById('ota_we').value.trim(),otaWindowEnabled:document.getElementById('ota_en').checked};
+  await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});
+  document.getElementById('ota_msg').textContent='Saved — applies on next kiosk sync';setTimeout(()=>render(),900);
+}
+async function addRelease(){
+  const version=document.getElementById('nr_ver').value.trim(),channel=document.getElementById('nr_ch').value.trim()||'stable',notes=document.getElementById('nr_notes').value.trim();
+  if(!version){document.getElementById('nr_msg').textContent='version required';return}
+  const r=await api('/api/releases',{method:'POST',body:JSON.stringify({version,channel,notes})});
+  document.getElementById('nr_msg').textContent=r.error||'Added';if(!r.error)render();
+}
+async function delRelease(id){if(!confirm('Delete this version from the registry?'))return;await api('/api/releases/'+id,{method:'DELETE'});render();}
+async function deployOta(){
+  const version=document.getElementById('dep_ver').value;
+  if(!version){document.getElementById('dep_msg').textContent='Register a version first';return}
+  const tgt=document.getElementById('dep_target').value;const body=tgt==='__all__'?{all:true}:{kioskId:tgt};body.version=version;
+  if(!confirm('Deploy v'+version+' to '+(tgt==='__all__'?'ALL kiosks':tgt)+'?'))return;
+  const r=await api('/api/ota/deploy',{method:'POST',body:JSON.stringify(body)});
+  document.getElementById('dep_msg').textContent=r.error||('Deployed to '+r.deployed+' kiosk(s)');if(!r.error)setTimeout(()=>render(),900);
+}
+async function updateNowOta(kioskId){
+  const body=kioskId?{kioskId}:(()=>{const t=document.getElementById('dep_target').value;return t==='__all__'?{all:true}:{kioskId:t}})();
+  if(!confirm('Trigger an immediate update check (bypasses the time window; still waits for the kiosk to be idle)?'))return;
+  await api('/api/ota/update-now',{method:'POST',body:JSON.stringify(body)});setTimeout(()=>render(),900);
+}
+async function rollbackOta(kioskId){
+  if(!confirm('Roll this kiosk back to its previous version?'))return;
+  const r=await api('/api/ota/rollback',{method:'POST',body:JSON.stringify({kioskId})});
+  alert(r.error?r.error:('Rollback queued ('+r.rolledBack+')'));render();
+}
+async function windowOta(kioskId){
+  const start=prompt('Update window START (HH:MM). Leave blank to clear the override and use the fleet default:','02:00');
+  if(start===null)return;
+  if(start===''){await api('/api/ota/window',{method:'POST',body:JSON.stringify({kioskId,clear:true})});render();return}
+  const end=prompt('Update window END (HH:MM):','04:00');if(end===null)return;
+  await api('/api/ota/window',{method:'POST',body:JSON.stringify({kioskId,start,end,enabled:true})});render();
+}
+async function renderUsers(el){
+  if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
+  const users=await api('/api/users');
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Users</div>
+    <h2 style="font-size:1.4rem;margin-bottom:14px">User Accounts</h2>
+    <div class="card" style="max-width:560px;margin-bottom:20px">
+      <div class="label">Add User</div>
+      <div class="row" style="margin-top:10px">
+        <input id="nu_user" placeholder="username" style="width:150px"/>
+        <input id="nu_pw" type="password" placeholder="password" style="width:150px"/>
+        <select id="nu_role"><option value="viewer">Viewer</option><option value="admin">Admin</option></select>
+        <button class="btn" onclick="addUser()">Add</button>
+        <span id="nu_msg" class="ok"></span>
+      </div>
+    </div>
+    <div class="card"><table>
+      <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>${users.map(u=>`<tr>
+        <td>${esc(u.username)}${u.username===me.username?' <span class="muted">(you)</span>':''}</td>
+        <td>
+          <select onchange="setRole('${esc(u.username)}',this.value)">
+            <option value="viewer" ${u.role==='viewer'?'selected':''}>Viewer</option>
+            <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+          </select>
+        </td>
+        <td class="dim">${esc((u.createdAt||'').substring(0,10))}</td>
+        <td><div class="row">
+          <button class="ghost" onclick="resetPw('${esc(u.username)}')">Reset password</button>
+          ${u.username!==me.username?`<button class="ghost" style="border-color:var(--red);color:var(--red)" onclick="delUser('${esc(u.username)}')">Delete</button>`:''}
+        </div></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+async function addUser(){
+  const username=document.getElementById('nu_user').value, password=document.getElementById('nu_pw').value, role=document.getElementById('nu_role').value;
+  if(!username||!password){document.getElementById('nu_msg').textContent='username + password required';return}
+  const r=await api('/api/users',{method:'POST',body:JSON.stringify({username,password,role})});
+  document.getElementById('nu_msg').textContent=r.error||'Added'; if(!r.error) render();
+}
+async function setRole(u,role){await api('/api/users/'+encodeURIComponent(u),{method:'PATCH',body:JSON.stringify({role})});render()}
+async function resetPw(u){const p=prompt('New password for '+u+':');if(!p)return;await api('/api/users/'+encodeURIComponent(u),{method:'PATCH',body:JSON.stringify({password:p})});alert('Password updated.')}
+async function delUser(u){if(!confirm('Delete user '+u+'?'))return;const r=await api('/api/users/'+encodeURIComponent(u),{method:'DELETE'});if(r.error)alert(r.error);render()}
+
+/* ---------- OPERATORS (field staff, admin only) ---------- */
+const opRole=r=>({office:'Office (full)',operator:'Operator (maintenance)',viewer:'Viewer (read-only)'}[r]||r);
+async function renderOperators(el){
+  if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
+  const ops=await api('/api/operators');
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Operators</div>
+    <h2 style="font-size:1.4rem;margin-bottom:6px">Operators (field staff)</h2>
+    <p class="muted" style="margin-bottom:18px">Create an account for each person who services kiosks. They enter their PIN on the kiosk to unlock maintenance; every action is logged against them. PINs sync to all kiosks.</p>
+    <div class="card" style="max-width:640px;margin-bottom:20px">
+      <div class="label">Add Operator</div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">
+        <input id="no_name" placeholder="Full name (e.g. Paul Smith)" style="width:200px"/>
+        <input id="no_pin" inputmode="numeric" maxlength="8" placeholder="PIN (4–8 digits)" style="width:130px"/>
+        <select id="no_role"><option value="operator">Operator (maintenance)</option><option value="office">Office (full)</option><option value="viewer">Viewer (read-only)</option></select>
+        <button class="btn" onclick="addOperator()">Add</button>
+        <span id="no_msg" class="ok"></span>
+      </div>
+    </div>
+    <div class="card"><table>
+      <thead><tr><th>Name</th><th>PIN</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>${ops.length?ops.map(o=>`<tr>
+        <td>${esc(o.name)}</td>
+        <td class="mono">${esc(o.pin)}</td>
+        <td><select onchange="setOpRole(${o.id},this.value)">
+          <option value="operator" ${o.role==='operator'?'selected':''}>Operator (maintenance)</option>
+          <option value="office" ${o.role==='office'?'selected':''}>Office (full)</option>
+          <option value="viewer" ${o.role==='viewer'?'selected':''}>Viewer (read-only)</option>
+        </select></td>
+        <td class="dim">${esc((o.createdAt||'').substring(0,10))}</td>
+        <td><div class="row">
+          <button class="ghost" onclick="resetOpPin(${o.id})">Change PIN</button>
+          <button class="ghost" style="border-color:var(--red);color:var(--red)" onclick="delOperator(${o.id},'${esc(o.name)}')">Delete</button>
+        </div></td>
+      </tr>`).join(''):'<tr><td colspan="5" class="muted" style="padding:16px 0">No operators yet. Add one above.</td></tr>'}</tbody>
+    </table></div>`;
+}
+async function addOperator(){
+  const name=document.getElementById('no_name').value, pin=document.getElementById('no_pin').value, role=document.getElementById('no_role').value;
+  const r=await api('/api/operators',{method:'POST',body:JSON.stringify({name,pin,role})});
+  document.getElementById('no_msg').textContent=r.error||'Added'; if(!r.error) render();
+}
+async function setOpRole(id,role){await api('/api/operators/'+id,{method:'PATCH',body:JSON.stringify({role})});render()}
+async function resetOpPin(id){const p=prompt('New PIN (4–8 digits):');if(!p)return;const r=await api('/api/operators/'+id,{method:'PATCH',body:JSON.stringify({pin:p})});if(r.error)alert(r.error);render()}
+async function delOperator(id,name){if(!confirm('Delete operator '+name+'? Their PIN will stop working on all kiosks.'))return;await api('/api/operators/'+id,{method:'DELETE'});render()}
+
+/* ---------- SITE PRICING ---------- */
+async function renderPricing(el){
+  const kiosks=await api('/api/kiosks');
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Site Pricing</div>
+    <h2 style="font-size:1.4rem;margin-bottom:6px">Site-Specific Pricing</h2>
+    <p class="muted" style="margin-bottom:18px">Set a coin price per location. Changes are applied remotely — each kiosk pulls and confirms the new price on its next sync.</p>
+    <div class="card"><table>
+      <thead><tr><th>Location</th><th>Coin Price</th><th>Set New Price</th><th>Sync Status</th></tr></thead>
+      <tbody>
+      ${kiosks.map(k=>`<tr>
+        <td>${esc(k.name)}<div class="muted">${esc(k.location||k.destination)}</div></td>
+        <td><b>${rand(k.coinPriceCents)}</b></td>
+        <td>${admin()?`<div class="row"><span class="dim">R</span><input type="number" min="0" step="1" id="p_${k.id}" value="${(k.coinPriceCents/100).toFixed(2)}" style="width:100px"/><button class="ghost" onclick="setPriceRow('${k.id}')">Apply</button><span id="m_${k.id}" class="ok"></span></div>`:'<span class="muted">view only</span>'}</td>
+        <td>${k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending</span>'}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+async function setPriceRow(id){
+  const v=parseFloat(document.getElementById('p_'+id).value);
+  if(!isFinite(v)||v<0){document.getElementById('m_'+id).textContent='Invalid';return}
+  await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({coinPriceCents:Math.round(v*100)})});
+  document.getElementById('m_'+id).textContent='Queued';
+  setTimeout(()=>render(),700);
+}
+async function setPrice(id){
+  const v=parseFloat(document.getElementById('price').value);
+  if(!isFinite(v)||v<0){document.getElementById('prmsg').textContent='Invalid';return}
+  await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({coinPriceCents:Math.round(v*100)})});
+  document.getElementById('prmsg').textContent='Queued — kiosk will apply on next sync';
+  setTimeout(()=>render(),800);
+}
+
+/* ---------- MAIN DASHBOARD (all kiosks) ---------- */
+async function renderFleet(el,isAuto){
+  const [kiosks,g]=await Promise.all([api('/api/kiosks'),api('/api/reports/global?period=today')]);
+  el.innerHTML=`
+    <div class="row between" style="margin-bottom:18px">
+      <div class="crumbs">Fleet Overview</div>
+      <div class="row">
+        <button class="ghost" onclick="go({name:'monitoring'})">Monitoring${g.systemAlerts>0?` <span class="badge">${g.systemAlerts}</span>`:''}</button>
+        <button class="ghost" onclick="go({name:'pricing'})">Pricing</button>
+        ${admin()?`<button class="ghost" onclick="go({name:'images'})">Coin Images</button>`:''}
+        ${admin()?`<button class="ghost" onclick="go({name:'destinations'})">Destinations</button>`:''}
+        <button class="ghost" onclick="go({name:'global'})">Global Reports</button>
+        ${admin()?`<button class="ghost" onclick="go({name:'users'})">Users</button>`:''}
+        ${admin()?`<button class="ghost" onclick="go({name:'operators'})">Operators</button>`:''}
+        ${admin()?`<button class="ghost" onclick="go({name:'updates'})">Updates</button>`:''}
+        ${admin()?`<button class="ghost" onclick="go({name:'audit'})">Audit</button>`:''}
+        ${admin()?`<button class="btn" onclick="addKiosk()">+ Add Kiosk</button>`:''}
+      </div>
+    </div>
+    <div class="grid metrics" style="margin-bottom:22px">
+      ${metric('Kiosks Online',g.kiosksOnline+' / '+g.kiosksTotal)}
+      ${metric('Sales Today',g.totalSales)}
+      ${metric('Revenue Today',rand(g.totalRevenue))}
+      ${metric('Open Alerts',g.openAlerts, g.openAlerts>0?'err':'')}
+    </div>
+    ${(()=>{const tags=[...new Set(kiosks.flatMap(k=>k.tags||[]))].sort();return tags.length?`<div class="pills" style="margin-bottom:16px"><button class="pchip ${!window._tagFilter?'active':''}" onclick="window._tagFilter=null;render()">All</button>${tags.map(t=>`<button class="pchip ${window._tagFilter===t?'active':''}" onclick="window._tagFilter='${esc(t)}';render()">${esc(t)}</button>`).join('')}</div>`:''})()}
+    <div class="grid cards">
+      ${kiosks.filter(k=>!window._tagFilter||(k.tags||[]).includes(window._tagFilter)).map(kCard).join('')||'<div class="empty">No kiosks match this tag.</div>'}
+    </div>`;
+}
+function metric(label,val,cls){return `<div class="card"><div class="label">${label}</div><div class="val ${cls||''}">${val}</div></div>`}
+function kCard(k){
+  const h1=k.hopper1, h2=k.hopper2;
+  return `<div class="card kcard" onclick="go({name:'kiosk',id:'${k.id}'})">
+    <div class="khead">
+      <div><div class="kname">${esc(k.name)}</div><div class="kloc">${esc(k.location||k.destination)}</div></div>
+      <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
+    </div>
+    <div class="row" style="gap:14px">
+      <span class="st-${k.operationalStatus}" style="font-size:.82rem;font-weight:700">${stLabel(k.operationalStatus)}</span>
+      <span class="muted">· seen ${ago(k.lastSeen)}</span>
+      ${k.openAlerts>0?`<span class="badge">${k.openAlerts} alert${k.openAlerts>1?'s':''}</span>`:''}
+    </div>
+    <div class="kmetrics">
+      <div>Sales today<b>${k.salesToday}</b></div>
+      <div>Hopper 1<b>${h1?h1.coinCount:'—'}</b></div>
+      <div>Hopper 2<b>${h2?h2.coinCount:'—'}</b></div>
+      <div>Version<b style="font-size:.95rem">${esc(k.appVersion||'-')}</b></div>
+    </div>
+  </div>`;
+}
+async function addKiosk(){
+  const dests=await api('/api/destinations');
+  const id=prompt('Kiosk ID (e.g. kiosk-006):'); if(!id)return;
+  const name=prompt('Kiosk name:'); if(!name)return;
+  const location=prompt('Location:')||'';
+  const destinationId=prompt('Destination id ('+dests.map(d=>d.id).join(', ')+'):',dests[0]?.id)||dests[0]?.id;
+  const r=await api('/api/kiosks',{method:'POST',body:JSON.stringify({id,name,location,destinationId})});
+  if(r.apiKey) alert('Kiosk created.\\n\\nAPI key (enter this on the kiosk):\\n'+r.apiKey);
+  render();
+}
+
+/* ---------- KIOSK DETAIL ---------- */
+let kioskTab='overview';
+async function renderKiosk(el,id,isAuto){
+  if(!isAuto) kioskTab=kioskTab||'overview';
+  const k=await api('/api/kiosks/'+id);
+  const tabs=['overview','transactions','sales','inventory','marketing','alerts','maintenance'];
+  const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance'};
+  const alerts=await api('/api/kiosks/'+id+'/alerts');
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / ${esc(k.name)}</div>
+    <div class="row between">
+      <div><h2 style="font-size:1.4rem">${esc(k.name)}</h2><div class="muted">${esc(k.location)} · ${esc(k.destination?.name||'')}</div></div>
+      <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
+    </div>
+    <div class="tabs">${tabs.map(t=>`<button class="tab ${t===kioskTab?'active':''}" onclick="kioskTab='${t}';render()">${labels[t]}${t==='alerts'&&alerts.length?`<span class="badge">${alerts.length}</span>`:''}</button>`).join('')}</div>
+    <div id="ktab"></div>`;
+  await renderKioskTab(id,k,alerts);
+}
+async function renderKioskTab(id,k,alerts){
+  const c=document.getElementById('ktab');
+  if(kioskTab==='overview'){
+    const h=k.health||{};
+    const statusSel=['active','maintenance','out_of_service'].map(s=>`<option value="${s}" ${k.operationalStatus===s?'selected':''}>${stLabel(s)}</option>`).join('');
+    const [dests,schedules]=admin()?await Promise.all([api('/api/destinations'),api('/api/kiosks/'+id+'/schedules')]):[[],[]];
+    const pendingSched=schedules.filter(s=>!s.applied);
+    c.innerHTML=`
+      <div class="grid metrics" style="margin-bottom:18px">
+        ${metric('Device',(k.online?'● Online':'● Offline'),k.online?'ok':'err')}
+        ${metric('Last Seen',ago(h.lastSeen))}
+        ${metric('Software',esc(h.appVersion||k.appVersion||'-'))}
+        ${metric('Open Alerts',alerts.length,alerts.length?'err':'')}
+      </div>
+      <div class="grid cards">
+        <div class="card">
+          <div class="label">Connectivity & Health</div>
+          ${healthLine('Coin Hoppers',h.mdbConnected)}
+          ${healthLine('Nayax Terminal',h.nayaxConnected)}
+        </div>
+        <div class="card">
+          <div class="label">Coin Inventory</div>
+          ${hopper('Hopper 1',h.hopper1)}
+          ${hopper('Hopper 2',h.hopper2)}
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+            <div class="label" style="margin-bottom:8px">Coin availability${admin()?'':' (view only)'}</div>
+            ${[1,2].map(s=>{const en=k['coin'+s+'Enabled']!==false;return `<div class="row between" style="padding:5px 0">
+              <span>Coin ${s} <span class="pill ${en?'on':'off'}" style="margin-left:6px">${en?'● Shown':'● Hidden'}</span></span>
+              ${admin()?`<button class="ghost" onclick="toggleCoin('${id}',${s},${en})">${en?'Disable':'Enable'}</button>`:''}
+            </div>`}).join('')}
+            <div class="muted" style="font-size:.78rem;margin-top:6px">Disable a coin if its hopper is out of stock — the kiosk hides it and shows only the available coin.</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="label">Operational Status</div>
+          <div class="row" style="margin-top:8px">
+            <select id="opstat" ${admin()?'':'disabled'}>${statusSel}</select>
+            ${admin()?`<button class="ghost" onclick="setStatus('${id}')">Update</button>`:'<span class="muted">view only</span>'}
+            <span id="opmsg" class="ok"></span>
+          </div>
+          <div class="muted" style="margin-top:12px">ID: <span class="mono">${esc(k.id)}</span></div>
+          ${admin()?`
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+            <div class="label" style="margin-bottom:6px">Destination</div>
+            <div class="row"><select id="kdest">${dests.map(d=>`<option value="${d.id}" ${k.destinationId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}</select><button class="ghost" onclick="setDest('${id}')">Save</button></div>
+            <div class="label" style="margin:12px 0 6px">Tags (comma-separated)</div>
+            <div class="row"><input id="ktags" value="${esc((k.tags||[]).join(', '))}" placeholder="e.g. cape-town, airport" style="flex:1"/><button class="ghost" onclick="setTags('${id}')">Save</button></div>
+            <div style="margin-top:8px">${(k.tags||[]).map(t=>`<span class="pill" style="background:rgba(201,162,39,.15);color:var(--gold-l);margin-right:6px">${esc(t)}</span>`).join('')}</div>
+            <span id="kmetamsg" class="ok"></span>
+          </div>`:''}
+        </div>
+        <div class="card">
+          <div class="label">Coin Price (this site)</div>
+          <div class="row" style="margin-top:8px">
+            <span class="dim">R</span>
+            <input type="number" id="price" min="0" step="1" style="width:120px" value="${((k.coinPriceCents??9000)/100).toFixed(2)}" ${admin()?'':'disabled'}/>
+            ${admin()?`<button class="ghost" onclick="setPrice('${id}')">Apply Remotely</button>`:'<span class="muted">view only</span>'}
+            <span id="prmsg" class="ok"></span>
+          </div>
+          <div style="margin-top:14px">
+            ${k.synced
+              ? `<span class="pill on">✓ Synced (config v${k.configVersion})</span>`
+              : `<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending — server v${k.configVersion} / kiosk v${k.appliedConfigVersion}</span>`}
+            <div class="muted" style="margin-top:8px">${k.lastConfigUpdate ? 'Last change: ' + esc(k.lastConfigUpdate.substring(0,19)) : 'No remote changes yet'}</div>
+          </div>
+          ${admin()?`
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+            <div class="label" style="margin-bottom:6px">Schedule a price change</div>
+            <div class="row" style="flex-wrap:wrap"><span class="dim">R</span><input type="number" id="schprice" min="0" step="1" placeholder="price" style="width:90px"/><input type="datetime-local" id="schwhen"/><button class="ghost" onclick="schedulePrice('${id}')">Schedule</button><span id="schmsg" class="ok"></span></div>
+            ${pendingSched.length?`<div style="margin-top:10px">${pendingSched.map(s=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="muted">${rand(s.priceCents)} on ${esc(s.applyAt.replace('T',' ').substring(0,16))}</span><button class="ghost" style="padding:4px 10px;font-size:.78rem" onclick="cancelSchedule(${s.id})">Cancel</button></div>`).join('')}</div>`:'<div class="muted" style="margin-top:8px;font-size:.8rem">No scheduled changes</div>'}
+          </div>`:''}
+        </div>
+        ${admin()?`<div class="card">
+          <div class="label">Master Admin PIN (kiosk override)</div>
+          <p class="muted" style="font-size:.82rem;margin:8px 0"><b>Master key for this kiosk</b> — always unlocks with full <b>Office</b> access, and works even offline or before any operators have synced. Separate from <a onclick="go({name:'operators'})" style="color:var(--gold);cursor:pointer">Operators</a> (per-person PINs). Push a 4–8 digit PIN to set/rotate it; it's a <b>one-time set</b> (kept until you push again, not re-applied on other syncs). Leave blank to keep the kiosk's local PIN. ${k.adminPin?'<b style="color:var(--green)">● Master PIN last pushed from here</b>':'<span class="muted">○ No master PIN pushed — kiosk uses its local PIN</span>'}</p>
+          <div class="row">
+            <input type="text" inputmode="numeric" maxlength="8" id="apin" placeholder="e.g. 4829" style="width:120px"/>
+            <button class="ghost" onclick="setAdminPin('${id}')">Push PIN</button>
+            ${k.adminPin?`<button class="ghost" onclick="clearAdminPin('${id}')">Clear override</button>`:''}
+            <span id="apinmsg" class="ok"></span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="label">Fleet Connection (API key)</div>
+          <p class="muted" style="font-size:.82rem;margin:8px 0">Enter on the kiosk: Admin → System → Fleet Connection.</p>
+          <div style="margin-bottom:6px">Kiosk ID: <span class="mono">${esc(k.id)}</span></div>
+          <div class="row"><span class="mono" id="apikey" style="word-break:break-all;background:rgba(255,255,255,.05);padding:6px 8px;border-radius:6px;font-size:.78rem">${esc(k.apiKey||'')}</span></div>
+          <div class="row" style="margin-top:10px">
+            <button class="ghost" onclick="copyKey()">Copy key</button>
+            <button class="ghost" onclick="regenKey('${id}')">Regenerate</button>
+            <span id="keymsg" class="ok"></span>
+          </div>
+          <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+            <div class="label" style="color:var(--red)">Danger zone</div>
+            <button class="ghost" style="border-color:var(--red);color:var(--red);margin-top:8px" onclick="deleteKiosk('${id}','${esc(k.name)}')">Delete this kiosk</button>
+          </div>
+        </div>`:''}
+        ${admin()?`<div class="card">
+          <div class="label">Promotional message (kiosk screen)</div>
+          <p class="muted" style="font-size:.82rem;margin:8px 0">Shows as a banner on the kiosk's home screen. Applied on the kiosk's next sync.</p>
+          <label class="row" style="margin-bottom:10px;cursor:pointer"><input type="checkbox" id="promoOn" ${k.promoEnabled?'checked':''} style="width:auto"/> <span>Show banner</span></label>
+          <textarea id="promoText" rows="2" placeholder="e.g. Buy 2 coins, get a free keyring today!" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(201,162,39,.4);border-radius:9px;color:var(--white);padding:9px 12px;font-size:.9rem">${esc(k.promoText||'')}</textarea>
+          <div class="row" style="margin-top:10px"><button class="btn" onclick="savePromo('${id}')">Save message</button><span id="promomsg" class="ok"></span></div>
+        </div>`:''}
+        ${admin()?`<div class="card">
+          <div class="label">QR code (home screen, bottom-right)</div>
+          <p class="muted" style="font-size:.82rem;margin:8px 0">The kiosk generates a small QR from this link (e.g. website, socials, menu).</p>
+          <label class="row" style="margin-bottom:10px;cursor:pointer"><input type="checkbox" id="qrOn" ${k.qrEnabled?'checked':''} style="width:auto"/> <span>Show QR code</span></label>
+          <div style="margin-bottom:8px"><input type="text" id="qrUrl" placeholder="https://example.com" value="${esc(k.qrUrl||'')}" style="width:100%"/></div>
+          <div style="margin-bottom:8px"><input type="text" id="qrCaption" placeholder="Caption (optional, e.g. Visit us)" value="${esc(k.qrCaption||'')}" style="width:100%"/></div>
+          <div class="row"><button class="btn" onclick="saveQR('${id}')">Save QR</button><span id="qrmsg" class="ok"></span></div>
+        </div>`:''}
+      </div>`;
+  }
+  else if(kioskTab==='transactions'){
+    const r=kRange();
+    const tx=await api('/api/kiosks/'+id+'/transactions'+kTxQS());
+    c.innerHTML=`<div class="row between" style="margin-bottom:12px">
+        <span class="muted">${r?('Range '+r.from+' → '+r.to+' (set on Sales tab)'):'Latest 200 transactions'}</span>
+        <div class="row">
+          <button class="ghost" onclick="exportKioskExcel('${id}')">Export Excel</button>
+          <button class="ghost" onclick="exportKioskPDF('${id}')">Export PDF</button>
+        </div>
+      </div>`+txTable(tx);
+  }
+  else if(kioskTab==='sales'){
+    window._kp=window._kp||'today';
+    const r=kRange();
+    const [s,ts]=await Promise.all([api('/api/kiosks/'+id+'/sales?'+kQS()),api('/api/kiosks/'+id+'/timeseries?'+kTsQS())]);
+    const periods=['today','week','month','all'];
+    const chartTitle=r?('Daily revenue — '+r.from+' to '+r.to):'Daily revenue — last 30 days';
+    c.innerHTML=`<div class="row between" style="margin-bottom:12px">
+        <span class="muted">Sales report${r?(' · '+r.from+' → '+r.to):(' · '+(window._kp||'today'))}</span>
+        <div class="row"><button class="ghost" onclick="exportKioskSalesExcel('${id}')">Export Excel</button><button class="ghost" onclick="exportKioskSalesPDF('${id}')">Export PDF</button></div>
+      </div>
+      <div class="pills">${periods.map(p=>`<button class="pchip ${!r&&p===window._kp?'active':''}" onclick="window._kfrom=null;window._kto=null;window._kp='${p}';render()">${p==='all'?'All Time':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div>
+      <div class="row" style="margin:0 0 16px;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="muted">Custom range:</span>
+        <input type="date" id="kfrom" value="${window._kfrom||''}"/>
+        <span class="muted">to</span>
+        <input type="date" id="kto" value="${window._kto||''}"/>
+        <button class="ghost" onclick="applyKioskRange()">Apply</button>
+        ${r?`<button class="ghost" onclick="clearKioskRange()">Clear</button><span class="pill on">${r.from} → ${r.to}</span>`:''}
+      </div>
+      <div class="grid metrics">
+        ${metric('Total Sales',s.totalSales)}${metric('Total Revenue',rand(s.totalRevenue))}
+        ${metric('Coin 1 Sales',s.coin1Sales)}${metric('Coin 1 Revenue',rand(s.coin1Revenue))}
+        ${metric('Coin 2 Sales',s.coin2Sales)}${metric('Coin 2 Revenue',rand(s.coin2Revenue))}
+      </div>
+      <div class="card" style="margin-top:18px"><div class="label">${chartTitle}</div><div style="position:relative;height:240px;margin-top:8px"><canvas id="rchart"></canvas></div></div>`;
+    drawRevenueChart('rchart',ts);
+  }
+  else if(kioskTab==='marketing'){
+    const mk=await api('/api/marketing?kioskId='+id);
+    const s=mk.settings;
+    const durOpts=[5,10,15,30].map(n=>`<option value="${n}" ${s.slideSeconds===n?'selected':''}>${n} seconds</option>`).join('');
+    c.innerHTML=`
+      <div class="card" style="max-width:620px;margin-bottom:18px">
+        <div class="label">Marketing slideshow settings</div>
+        <label class="row" style="margin:12px 0;cursor:pointer"><input type="checkbox" id="mk_on" ${s.enabled?'checked':''} style="width:auto"/> <span>Enabled (show slideshow when idle)</span></label>
+        <div class="row" style="margin-bottom:10px;flex-wrap:wrap">
+          <label class="muted" style="width:150px">Each image shows for</label>
+          <select id="mk_dur">${durOpts}</select>
+        </div>
+        <div class="row" style="margin-bottom:10px;flex-wrap:wrap">
+          <label class="muted" style="width:150px">Start after idle</label>
+          <input type="number" id="mk_idle" min="5" step="5" value="${s.idleSeconds}" style="width:100px"/><span class="muted">seconds</span>
+        </div>
+        <div class="row" style="margin-bottom:10px;flex-wrap:wrap">
+          <label class="muted" style="width:150px">Active hours (optional)</label>
+          <input type="time" id="mk_start" value="${esc(s.activeStart||'')}"/><span class="muted">to</span><input type="time" id="mk_end" value="${esc(s.activeEnd||'')}"/>
+        </div>
+        <div class="row"><button class="btn" onclick="saveMarketing('${id}')">Save settings</button><span id="mk_msg" class="ok"></span></div>
+        <p class="muted" style="font-size:.8rem;margin-top:8px">The kiosk shows these full-screen when idle on the home screen, and returns to home on any touch. It never interrupts a transaction.</p>
+      </div>
+      <div class="card">
+        <div class="row between"><div class="label">Images (${mk.images.length})</div>
+          <div class="row"><input type="file" id="mk_file" accept="image/png,image/jpeg"/><button class="btn" onclick="uploadMarketing('${id}')">Upload</button><span id="mk_umsg" class="ok"></span></div>
+        </div>
+        <div class="row" style="flex-wrap:wrap;gap:14px;margin-top:14px">
+          ${mk.images.length?mk.images.map(im=>`<div style="text-align:center">
+            <img src="${im.url}" style="width:140px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"/>
+            <div><button class="ghost" style="padding:4px 12px;font-size:.78rem;border-color:var(--red);color:var(--red);margin-top:6px" onclick="removeMarketing(${im.id})">Remove</button></div>
+          </div>`).join(''):'<div class="empty">No marketing images yet.</div>'}
+        </div>
+      </div>`;
+  }
+  else if(kioskTab==='alerts'){
+    if(!alerts.length){c.innerHTML='<div class="card ok">✓ No outstanding alerts.</div>';return}
+    c.innerHTML='<table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
+      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>Coin ${a.coinSelected}</td><td>${rand(a.amount)}</td><td class="err">${esc(a.dispenseResult)}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${esc(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
+  }
+  else if(kioskTab==='maintenance'){
+    const m=await api('/api/kiosks/'+id+'/maintenance');
+    c.innerHTML=(admin()?`<div class="row" style="margin-bottom:16px"><input id="mnote" placeholder="Add maintenance note…" style="flex:1"/><button class="btn" onclick="addMaint('${id}')">Add</button></div>`:'')+
+      (m.length?'<table><thead><tr><th>Date/Time</th><th>By</th><th>Note</th></tr></thead><tbody>'+m.map(x=>`<tr><td class="dim">${esc((x.createdAt||'').substring(0,19))}</td><td>${esc(x.by)}</td><td>${esc(x.note)}</td></tr>`).join('')+'</tbody></table>':'<div class="empty">No maintenance records.</div>');
+  }
+  else if(kioskTab==='inventory'){
+    window._invp=window._invp||'month';
+    const inv=await api('/api/kiosks/'+id+'/inventory?period='+window._invp);
+    const fmtDays=d=>d==null?'—':(d>=999?'999+':(Math.round(d*10)/10)+' d');
+    const hopCard=(h)=>{
+      const pct=h.currentCount==null?0:Math.min(100,Math.round((h.currentCount/1000)*100));
+      const low=h.currentCount!=null&&h.currentCount<=50;
+      return `<div class="card">
+        <div class="row between"><div class="label">Hopper ${h.slot} (Coin ${h.slot})</div><span class="muted">${esc(h.status)}</span></div>
+        <div class="row between" style="margin-top:8px"><span>Current</span><b class="${low?'err':''}">${h.currentCount==null?'—':h.currentCount}</b></div>
+        <div class="hopbar"><div style="width:${pct}%"></div></div>
+        <div class="row between" style="margin-top:12px"><span class="muted">Avg use / day</span><b>${Math.round(h.avgDailyUse*10)/10}</b></div>
+        <div class="row between" style="margin-top:6px"><span class="muted">Est. days to empty</span><b class="${h.daysToEmpty!=null&&h.daysToEmpty<7?'err':''}">${fmtDays(h.daysToEmpty)}</b></div>
+        <div class="muted" style="margin-top:8px;font-size:.8rem">${h.lastRefill?('Last refill: +'+h.lastRefill.added+' on '+h.lastRefill.createdAt.substring(0,10)+(h.lastRefill.by?' by '+esc(h.lastRefill.by):'')):'No refills yet'}</div>
+      </div>`;
+    };
+    const rec=inv.reconciliation;
+    const periods=['today','week','month','all'];
+    c.innerHTML=`
+      <div class="grid cards" style="margin-bottom:20px">${inv.hoppers.map(hopCard).join('')}</div>
+      <h3 style="font-size:1.05rem;margin:6px 0 10px">Cash reconciliation</h3>
+      <div class="pills">${periods.map(p=>`<button class="pchip ${p===window._invp?'active':''}" onclick="window._invp='${p}';render()">${p==='all'?'All Time':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div>
+      <div class="card"><div class="muted" style="margin-bottom:8px">${rec.from.substring(0,10)} → ${rec.to.substring(0,10)}</div>
+      <table><thead><tr><th>Coin</th><th>Paid</th><th>Paid revenue</th><th>Dispensed</th><th>Not dispensed</th><th>Refund owed</th><th>Refills added</th></tr></thead><tbody>
+      ${rec.coins.map(c2=>`<tr><td>Coin ${c2.slot}</td><td>${c2.paid}</td><td>${rand(c2.paidRevenue)}</td><td class="ok">${c2.dispensed}</td><td class="${c2.notDispensed?'err':'dim'}">${c2.notDispensed}</td><td class="${c2.refundOwed?'err':'dim'}">${rand(c2.refundOwed)}</td><td>${c2.refillsAdded}</td></tr>`).join('')}
+      </tbody></table>
+      <p class="muted" style="font-size:.8rem;margin-top:10px">"Not dispensed" = paid but coin not released (refund owed). "Refund owed" = paid revenue minus dispensed value.</p>
+      </div>
+      <h3 style="font-size:1.05rem;margin:22px 0 10px">Hopper maintenance (reported by kiosk)</h3>
+      <div class="card">
+      ${(inv.maintenance&&inv.maintenance.length)?`<table><thead><tr><th>Date/Time</th><th>Hopper</th><th>Action</th><th>Qty</th><th>Stock</th><th>Operator</th><th>Role</th></tr></thead><tbody>
+        ${inv.maintenance.map(e=>`<tr><td>${esc((e.createdAt||'').replace('T',' ').substring(0,19))}</td><td>${e.hopperId}</td><td class="${e.type==='refill'?'ok':''}" style="${e.type==='empty'?'color:var(--amber)':''}">${e.type==='refill'?'Refill':'Empty (maint.)'}</td><td>${e.type==='refill'?'+'+e.quantity:e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td><td class="dim">${esc(e.operatorRole||'-')}</td></tr>`).join('')}
+      </tbody></table><p class="muted" style="font-size:.8rem;margin-top:10px">Emptying and refilling done on the kiosk. These are maintenance actions, not sales.</p>`
+        :'<div class="muted" style="padding:12px 0">No hopper maintenance reported yet.</div>'}
+      </div>`;
+  }
+}
+function healthLine(label,ok){return `<div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;background:${ok?'var(--green)':'var(--red)'}"></span>${label}</span><span class="${ok?'ok':'err'}">${ok?'Connected':'Offline'}</span></div>`}
+function hopper(label,h){if(!h)return `<div class="row between" style="padding:8px 0"><span>${label}</span><span class="dim">—</span></div>`;const pct=Math.min(100,Math.round((h.coinCount/1000)*100));const col=h.status==='ok'?'':'err';return `<div style="padding:8px 0"><div class="row between"><span>${label} <span class="muted">(${esc(h.status)})</span></span><b class="${col}">${h.coinCount}</b></div><div class="hopbar"><div style="width:${pct}%"></div></div></div>`}
+function txTable(rows){
+  if(!rows.length)return '<div class="empty">No transactions.</div>';
+  return '<table><thead><tr><th>Date/Time</th><th>Transaction ID</th><th>Coin</th><th>Amount</th><th>Payment</th><th>Dispense</th></tr></thead><tbody>'+
+    rows.map(t=>`<tr><td class="dim">${esc((t.createdAt||'').substring(0,19))}</td><td class="mono">${esc(t.transactionId)}</td><td>Coin ${t.coinSelected}</td><td>${rand(t.amount)}</td><td class="${t.paymentResult==='approved'?'ok':'err'}">${esc(t.paymentResult)}</td><td class="${t.dispenseResult==='success'?'ok':(t.dispenseResult?'err':'dim')}">${esc(t.dispenseResult||'—')}</td></tr>`).join('')+'</tbody></table>';
+}
+async function setStatus(id){const v=document.getElementById('opstat').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({operationalStatus:v})});document.getElementById('opmsg').textContent='Updated';setTimeout(()=>render(),600)}
+async function setDest(id){const v=document.getElementById('kdest').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({destinationId:v})});document.getElementById('kmetamsg').textContent='Destination saved';setTimeout(()=>render(),600)}
+async function setTags(id){const v=document.getElementById('ktags').value.split(',').map(s=>s.trim()).filter(Boolean);await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({tags:v})});document.getElementById('kmetamsg').textContent='Tags saved';setTimeout(()=>render(),600)}
+async function schedulePrice(id){
+  const p=parseFloat(document.getElementById('schprice').value),w=document.getElementById('schwhen').value;
+  if(!isFinite(p)||p<0){document.getElementById('schmsg').textContent='Enter a price';return}
+  if(!w){document.getElementById('schmsg').textContent='Pick a date/time';return}
+  const r=await api('/api/kiosks/'+id+'/schedule',{method:'POST',body:JSON.stringify({priceCents:Math.round(p*100),applyAt:new Date(w).toISOString()})});
+  document.getElementById('schmsg').textContent=r.error||'Scheduled';if(!r.error)setTimeout(()=>render(),700);
+}
+async function cancelSchedule(sid){await api('/api/schedules/cancel',{method:'POST',body:JSON.stringify({id:sid})});render()}
+async function savePromo(id){
+  const text=document.getElementById('promoText').value;
+  const enabled=document.getElementById('promoOn').checked;
+  await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({promoText:text,promoEnabled:enabled})});
+  document.getElementById('promomsg').textContent='Saved — kiosk will apply on next sync';
+  setTimeout(()=>render(),800);
+}
+async function saveQR(id){
+  const body=JSON.stringify({
+    qrEnabled:document.getElementById('qrOn').checked,
+    qrUrl:document.getElementById('qrUrl').value,
+    qrCaption:document.getElementById('qrCaption').value
+  });
+  await api('/api/kiosks/'+id,{method:'PATCH',body});
+  document.getElementById('qrmsg').textContent='Saved — kiosk will apply on next sync';
+  setTimeout(()=>render(),800);
+}
+async function saveMarketing(id){
+  const body=JSON.stringify({
+    kioskId:id,
+    enabled:document.getElementById('mk_on').checked,
+    slideSeconds:parseInt(document.getElementById('mk_dur').value)||10,
+    idleSeconds:parseInt(document.getElementById('mk_idle').value)||60,
+    activeStart:document.getElementById('mk_start').value,
+    activeEnd:document.getElementById('mk_end').value
+  });
+  await api('/api/marketing/settings',{method:'POST',body});
+  document.getElementById('mk_msg').textContent='Saved';
+  setTimeout(()=>render(),700);
+}
+async function uploadMarketing(id){
+  const f=document.getElementById('mk_file').files[0];
+  if(!f){document.getElementById('mk_umsg').textContent='Choose a file';return}
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    const dataBase64=reader.result.split(',')[1];
+    const r=await api('/api/marketing/image',{method:'POST',body:JSON.stringify({kioskId:id,name:f.name,mime:f.type,dataBase64})});
+    document.getElementById('mk_umsg').textContent=r.error||'Uploaded';
+    setTimeout(()=>render(),700);
+  };
+  reader.readAsDataURL(f);
+}
+async function removeMarketing(imageId){
+  if(!confirm('Remove this marketing image?'))return;
+  await api('/api/marketing/remove',{method:'POST',body:JSON.stringify({imageId})});
+  render();
+}
+async function resolveAlert(tid){await api('/api/alerts/resolve',{method:'POST',body:JSON.stringify({transactionId:tid})});render()}
+async function addMaint(id){const n=document.getElementById('mnote').value;if(!n)return;await api('/api/kiosks/'+id+'/maintenance',{method:'POST',body:JSON.stringify({note:n})});render()}
+function copyKey(){const t=document.getElementById('apikey').textContent;navigator.clipboard.writeText(t).then(()=>{document.getElementById('keymsg').textContent='Copied';setTimeout(()=>document.getElementById('keymsg').textContent='',1500)})}
+async function regenKey(id){
+  if(!confirm('Regenerate the API key? The kiosk will stop syncing until you enter the new key on the machine.'))return;
+  const r=await api('/api/kiosks/'+id+'/regenerate',{method:'POST'});
+  if(r.apiKey){document.getElementById('apikey').textContent=r.apiKey;document.getElementById('keymsg').textContent='New key generated';}
+}
+async function setAdminPin(id){
+  const v=(document.getElementById('apin').value||'').trim();
+  if(!/^\d{4,8}$/.test(v)){document.getElementById('apinmsg').textContent='Enter 4–8 digits';return}
+  await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({adminPin:v})});
+  document.getElementById('apinmsg').textContent='Pushed — applies on next sync';setTimeout(()=>render(),900)
+}
+async function clearAdminPin(id){
+  if(!confirm('Clear the PIN override? The kiosk keeps whatever PIN it currently has set locally.'))return;
+  await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({adminPin:''})});
+  setTimeout(()=>render(),700)
+}
+async function toggleCoin(id,slot,enabled){
+  if(enabled && !confirm('Disable Coin '+slot+'? It will be hidden on the kiosk on the next sync.'))return;
+  await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({['coin'+slot+'Enabled']:!enabled})});
+  setTimeout(()=>render(),500)
+}
+async function deleteKiosk(id,name){
+  if(!confirm('Delete kiosk "'+name+'"?\\n\\nThis removes its profile, transactions, alerts, images and history. This cannot be undone.'))return;
+  const r=await api('/api/kiosks/'+id,{method:'DELETE'});
+  if(r.ok){go({name:'fleet'})}else{alert(r.error||'Delete failed')}
+}
+
+/* ---------- GLOBAL REPORTS ---------- */
+function gRange(){return (window._gfrom&&window._gto)?{from:window._gfrom,to:window._gto}:null}
+function gQS(){const r=gRange();return r?('from='+r.from+'&to='+r.to):('period='+(window._gp||'all'))}
+function gTsQS(){const r=gRange();return r?('from='+r.from+'&to='+r.to):'days=30'}
+function applyGlobalRange(){
+  const f=document.getElementById('gfrom').value,t=document.getElementById('gto').value;
+  if(!f||!t){alert('Pick both a start and end date.');return}
+  if(f>t){alert('Start date must be on or before end date.');return}
+  window._gfrom=f;window._gto=t;render();
+}
+function clearGlobalRange(){window._gfrom=null;window._gto=null;render()}
+async function renderGlobal(el){
+  window._gp=window._gp||'all';
+  const r=gRange();
+  const [g,ts]=await Promise.all([api('/api/reports/global?'+gQS()),api('/api/reports/timeseries?'+gTsQS())]);
+  const periods=['today','week','month','all'];
+  const locRows=Object.entries(g.byLocation).sort((a,b)=>b[1].revenue-a[1].revenue);
+  const chartTitle=r?('Daily revenue — '+r.from+' to '+r.to):'Daily revenue — last 30 days (fleet)';
+  el.innerHTML=`
+    <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Global Reports</div>
+    <div class="row between">
+      <h2 style="font-size:1.4rem">Global Reporting — All Kiosks</h2>
+      <div class="row"><button class="ghost" onclick="exportGlobalExcel()">Export Excel</button><button class="ghost" onclick="exportGlobalPDF()">Export PDF</button></div>
+    </div>
+    <div class="pills" style="margin-top:14px">${periods.map(p=>`<button class="pchip ${!r&&p===window._gp?'active':''}" onclick="window._gfrom=null;window._gto=null;window._gp='${p}';render()">${p==='all'?'All Time':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div>
+    <div class="row" style="margin:0 0 18px;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="muted">Custom range:</span>
+      <input type="date" id="gfrom" value="${window._gfrom||''}"/>
+      <span class="muted">to</span>
+      <input type="date" id="gto" value="${window._gto||''}"/>
+      <button class="ghost" onclick="applyGlobalRange()">Apply</button>
+      ${r?`<button class="ghost" onclick="clearGlobalRange()">Clear</button><span class="pill on">${r.from} → ${r.to}</span>`:''}
+    </div>
+    <div class="grid metrics" style="margin-bottom:22px">
+      ${metric('Total Sales',g.totalSales)}
+      ${metric('Total Revenue',rand(g.totalRevenue))}
+      ${metric('All Transactions',g.totalTransactions)}
+      ${metric('Coins in Hoppers',g.coinsInHoppers)}
+      ${metric('Kiosks Online',g.kiosksOnline+' / '+g.kiosksTotal)}
+      ${metric('Open Alerts',g.openAlerts,g.openAlerts?'err':'')}
+    </div>
+    <div class="card" style="margin-bottom:18px"><div class="label">${chartTitle}</div><div style="position:relative;height:240px;margin-top:8px"><canvas id="rchart"></canvas></div></div>
+    <div class="card">
+      <div class="label">Revenue by Location</div>
+      <table><thead><tr><th>Location</th><th>Sales</th><th>Revenue</th></tr></thead><tbody>
+      ${locRows.map(([loc,v])=>`<tr><td>${esc(loc)}</td><td>${v.sales}</td><td>${rand(v.revenue)}</td></tr>`).join('')||'<tr><td colspan=3 class="empty">No data</td></tr>'}
+      </tbody></table>
+    </div>`;
+  drawRevenueChart('rchart',ts);
+}
+
+/* ---------- Charts + Excel/PDF export ---------- */
+let _chart=null;
+const dt=s=>(s||'').replace('T',' ').substring(0,19);
+function drawRevenueChart(canvasId,series){
+  const cv=document.getElementById(canvasId);
+  if(!cv||!window.Chart)return;
+  if(_chart){try{_chart.destroy()}catch(e){}_chart=null}
+  _chart=new Chart(cv,{type:'bar',data:{labels:series.map(p=>p.date.substring(5)),datasets:[{label:'Revenue (R)',data:series.map(p=>Math.round(p.revenue/100)),backgroundColor:'#c9a227',borderRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#9fb0c8',maxTicksLimit:12,font:{size:10}},grid:{display:false}},y:{ticks:{color:'#9fb0c8'},grid:{color:'rgba(255,255,255,.06)'}}}}});
+}
+function libOK(g){if(!window[g]&&!(g==='jspdf'&&window.jspdf)){alert('Export needs internet (report library failed to load).');return false}return true}
+function kRange(){return (window._kfrom&&window._kto)?{from:window._kfrom,to:window._kto}:null}
+function kQS(){const r=kRange();return r?('from='+r.from+'&to='+r.to):('period='+(window._kp||'today'))}
+function kTsQS(){const r=kRange();return r?('from='+r.from+'&to='+r.to):'days=30'}
+function kTxQS(){const r=kRange();return r?('?from='+r.from+'&to='+r.to):''}
+function applyKioskRange(){
+  const f=document.getElementById('kfrom').value,t=document.getElementById('kto').value;
+  if(!f||!t){alert('Pick both a start and end date.');return}
+  if(f>t){alert('Start date must be on or before end date.');return}
+  window._kfrom=f;window._kto=t;render();
+}
+function clearKioskRange(){window._kfrom=null;window._kto=null;render()}
+async function exportKioskExcel(id){
+  if(!libOK('XLSX'))return;
+  const [k,tx]=await Promise.all([api('/api/kiosks/'+id),api('/api/kiosks/'+id+'/transactions'+kTxQS())]);
+  const rows=tx.map(t=>({Date:dt(t.createdAt),'Transaction ID':t.transactionId,Coin:t.coinSelected,'Amount (R)':t.amount/100,Payment:t.paymentResult,Dispense:t.dispenseResult||''}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{Date:'',['Transaction ID']:'No transactions'}]),'Transactions');
+  XLSX.writeFile(wb,(k.name||id).replace(/\W+/g,'_')+'_transactions.xlsx');
+}
+async function exportKioskPDF(id){
+  if(!libOK('jspdf'))return;
+  const r=kRange();
+  const [k,tx]=await Promise.all([api('/api/kiosks/'+id),api('/api/kiosks/'+id+'/transactions'+kTxQS())]);
+  const {jsPDF}=window.jspdf;const doc=new jsPDF();
+  doc.setFontSize(14);doc.text('Transactions — '+(k.name||id),14,16);
+  doc.setFontSize(10);doc.text((r?('Range: '+r.from+' to '+r.to+'   ·   '):'')+'Generated '+new Date().toLocaleString(),14,22);
+  doc.autoTable({startY:28,styles:{fontSize:8},headStyles:{fillColor:[201,162,39]},head:[['Date','Transaction','Coin','Amount','Payment','Dispense']],body:tx.map(t=>[dt(t.createdAt),t.transactionId,'Coin '+t.coinSelected,'R'+(t.amount/100).toFixed(2),t.paymentResult,t.dispenseResult||'—'])});
+  doc.save((k.name||id).replace(/\W+/g,'_')+'_transactions.pdf');
+}
+async function exportKioskSalesExcel(id){
+  if(!libOK('XLSX'))return;
+  const r=kRange();const label=r?(r.from+' to '+r.to):(window._kp||'today');
+  const [k,s,ts]=await Promise.all([api('/api/kiosks/'+id),api('/api/kiosks/'+id+'/sales?'+kQS()),api('/api/kiosks/'+id+'/timeseries?'+kTsQS())]);
+  const wb=XLSX.utils.book_new();
+  const summary=[{Metric:'Kiosk',Value:k.name},{Metric:'Period',Value:label},{Metric:'Total Sales',Value:s.totalSales},{Metric:'Total Revenue (R)',Value:s.totalRevenue/100},{Metric:'Coin 1 Sales',Value:s.coin1Sales},{Metric:'Coin 1 Revenue (R)',Value:s.coin1Revenue/100},{Metric:'Coin 2 Sales',Value:s.coin2Sales},{Metric:'Coin 2 Revenue (R)',Value:s.coin2Revenue/100}];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summary),'Sales Summary');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ts.map(p=>({Date:p.date,Sales:p.sales,'Revenue (R)':p.revenue/100}))),'Daily');
+  XLSX.writeFile(wb,(k.name||id).replace(/\W+/g,'_')+'_sales_'+label.replace(/\W+/g,'_')+'.xlsx');
+}
+async function exportKioskSalesPDF(id){
+  if(!libOK('jspdf'))return;
+  const r=kRange();const label=r?(r.from+' to '+r.to):(window._kp||'today');
+  const [k,s]=await Promise.all([api('/api/kiosks/'+id),api('/api/kiosks/'+id+'/sales?'+kQS())]);
+  const {jsPDF}=window.jspdf;const doc=new jsPDF();
+  doc.setFontSize(14);doc.text('Sales — '+(k.name||id),14,16);
+  doc.setFontSize(10);doc.text('Period: '+label+'   ·   Generated '+new Date().toLocaleString(),14,22);
+  doc.autoTable({startY:28,theme:'plain',body:[['Total sales',s.totalSales],['Total revenue','R'+(s.totalRevenue/100).toFixed(2)],['Coin 1 sales',s.coin1Sales],['Coin 1 revenue','R'+(s.coin1Revenue/100).toFixed(2)],['Coin 2 sales',s.coin2Sales],['Coin 2 revenue','R'+(s.coin2Revenue/100).toFixed(2)]]});
+  doc.save((k.name||id).replace(/\W+/g,'_')+'_sales_'+label.replace(/\W+/g,'_')+'.pdf');
+}
+async function exportGlobalExcel(){
+  if(!libOK('XLSX'))return;
+  const r=gRange();const label=r?(r.from+' to '+r.to):(window._gp||'all');
+  const g=await api('/api/reports/global?'+gQS());
+  const ts=await api('/api/reports/timeseries?'+gTsQS());
+  const wb=XLSX.utils.book_new();
+  const summary=[{Metric:'Period',Value:label},{Metric:'Total Sales',Value:g.totalSales},{Metric:'Total Revenue (R)',Value:g.totalRevenue/100},{Metric:'All Transactions',Value:g.totalTransactions},{Metric:'Coins in Hoppers',Value:g.coinsInHoppers},{Metric:'Kiosks Online',Value:g.kiosksOnline+'/'+g.kiosksTotal},{Metric:'Open Alerts',Value:g.openAlerts}];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summary),'Summary');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(Object.entries(g.byLocation).map(([Location,v])=>({Location,Sales:v.sales,'Revenue (R)':v.revenue/100}))),'By Location');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(g.perKiosk.map(k=>({Kiosk:k.name,Location:k.location,Online:k.online?'yes':'no',Sales:k.sales,'Revenue (R)':k.revenue/100,'Coin 1':k.coin1Sales,'Coin 2':k.coin2Sales}))),'Per Kiosk');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ts.map(p=>({Date:p.date,Sales:p.sales,'Revenue (R)':p.revenue/100}))),'Daily');
+  XLSX.writeFile(wb,'fleet_report_'+label.replace(/\W+/g,'_')+'.xlsx');
+}
+async function exportGlobalPDF(){
+  if(!libOK('jspdf'))return;
+  const r=gRange();const label=r?(r.from+' to '+r.to):(window._gp||'all');
+  const g=await api('/api/reports/global?'+gQS());
+  const {jsPDF}=window.jspdf;const doc=new jsPDF();
+  doc.setFontSize(15);doc.text('Souvenir Coin Kiosk — Fleet Report',14,16);
+  doc.setFontSize(10);doc.text('Period: '+label+'   ·   Generated '+new Date().toLocaleString(),14,23);
+  doc.autoTable({startY:30,theme:'plain',body:[['Total sales',g.totalSales],['Total revenue','R'+(g.totalRevenue/100).toFixed(2)],['All transactions',g.totalTransactions],['Coins in hoppers',g.coinsInHoppers],['Kiosks online',g.kiosksOnline+' / '+g.kiosksTotal],['Open alerts',g.openAlerts]]});
+  doc.autoTable({startY:doc.lastAutoTable.finalY+8,headStyles:{fillColor:[201,162,39]},head:[['Kiosk','Location','Online','Sales','Revenue']],body:g.perKiosk.map(k=>[k.name,k.location||'',k.online?'yes':'no',k.sales,'R'+(k.revenue/100).toFixed(2)])});
+  doc.save('fleet_report_'+label.replace(/\W+/g,'_')+'.pdf');
+}
+</script>
+</body>
+</html>
