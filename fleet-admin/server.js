@@ -331,6 +331,8 @@ function kioskSummary(k) {
     lastConfigUpdate: k.lastConfigUpdate || null,
     coinImages: coinImagesFor(k),
     tags: k.tags || [],
+    coin1Name: k.coin1Name || '',
+    coin2Name: k.coin2Name || '',
     // ---- OTA / software updates ----
     currentVersion: k.currentVersion || hb.appVersion || k.appVersion || null,
     targetVersion: k.targetVersion || '',
@@ -1001,6 +1003,9 @@ const server = createServer(async (req, res) => {
         if (b.location !== undefined) kiosk.location = b.location
         if (b.destinationId) kiosk.destinationId = b.destinationId
         if (Array.isArray(b.tags)) kiosk.tags = b.tags.map((t) => String(t).trim()).filter(Boolean)
+        // Friendly coin names shown on the dashboard in place of "Coin 1 / Coin 2".
+        if (typeof b.coin1Name === 'string') kiosk.coin1Name = b.coin1Name.trim().slice(0, 40)
+        if (typeof b.coin2Name === 'string') kiosk.coin2Name = b.coin2Name.trim().slice(0, 40)
         // A pricing change bumps the kiosk's config version; the kiosk applies it
         // and confirms via the appliedConfigVersion it reports in its heartbeat.
         if (typeof b.coinPriceCents === 'number' && b.coinPriceCents !== kiosk.coinPriceCents) {

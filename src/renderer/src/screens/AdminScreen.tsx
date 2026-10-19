@@ -128,7 +128,15 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
       // Server URL / Kiosk ID / API Key fields, or it would wipe what the
       // operator is typing/pasting before they can press Save.
       window.kiosk.getFleet().then((f) =>
-        setFleet((prev) => ({ ...prev, enabled: f.enabled, appliedConfigVersion: f.appliedConfigVersion, status: f.status }))
+        // Only update (and re-render) when the live status actually changed —
+        // returning the previous object unchanged keeps the screen from
+        // flickering every 4s while the System tab sits open.
+        setFleet((prev) =>
+          prev.enabled === f.enabled &&
+          prev.appliedConfigVersion === f.appliedConfigVersion &&
+          JSON.stringify(prev.status) === JSON.stringify(f.status)
+            ? prev
+            : { ...prev, enabled: f.enabled, appliedConfigVersion: f.appliedConfigVersion, status: f.status })
       )
     }, 4000)
     return () => clearInterval(id)

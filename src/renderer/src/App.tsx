@@ -29,6 +29,12 @@ interface MarketingConfig {
   images: string[]
 }
 
+// Cheap deep-equality for small config objects, so a re-poll only updates React
+// state (and re-renders) when the content genuinely changed.
+function sameJSON(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 function withinActiveHours(m: MarketingConfig): boolean {
   if (!m.activeStart || !m.activeEnd) return true
   const now = new Date()
@@ -60,13 +66,20 @@ export default function App() {
 
   // Load the configured coin price (and refresh it whenever we return home,
   // so price changes made in Admin take effect without a restart).
+  // Re-poll config, but only push new state when a value ACTUALLY changed.
+  // Returning the previous reference from a setter makes React bail out, so an
+  // unchanged poll triggers zero re-renders (no screen flicker every 20s).
   const refreshPrice = useCallback(() => {
+    // Numbers: React already bails when the value is identical.
     window.kiosk.getConfig().then((c) => setPriceCents(c.coinPriceCents))
     window.kiosk.getTransactionTimeout?.().then((s) => setTxTimeoutSec(s || 45)).catch(() => {})
-    window.kiosk.getCoinsEnabled?.().then((c) => setCoinsOn({ 1: c['1'] !== false, 2: c['2'] !== false })).catch(() => {})
-    window.kiosk.getPromo?.().then((p) => setPromo(p)).catch(() => {})
-    window.kiosk.getQR?.().then((q) => setQr(q)).catch(() => {})
-    window.kiosk.getMarketing?.().then((m) => setMarketing(m)).catch(() => {})
+    window.kiosk.getCoinsEnabled?.().then((c) => {
+      const next = { 1: c['1'] !== false, 2: c['2'] !== false }
+      setCoinsOn((prev) => (prev[1] === next[1] && prev[2] === next[2] ? prev : next))
+    }).catch(() => {})
+    window.kiosk.getPromo?.().then((p) => setPromo((prev) => (sameJSON(prev, p) ? prev : p))).catch(() => {})
+    window.kiosk.getQR?.().then((q) => setQr((prev) => (sameJSON(prev, q) ? prev : q))).catch(() => {})
+    window.kiosk.getMarketing?.().then((m) => setMarketing((prev) => (sameJSON(prev, m) ? prev : m))).catch(() => {})
   }, [])
   useEffect(() => {
     refreshPrice()

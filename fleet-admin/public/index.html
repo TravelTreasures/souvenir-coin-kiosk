@@ -22,6 +22,9 @@
   .grid{display:grid;gap:16px}
   .cards{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
   .metrics{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+  /* masonry: cards are only as tall as their content and pack into the gaps */
+  .cards.masonry{display:block;column-width:330px;column-gap:16px}
+  .cards.masonry>.card{break-inside:avoid;width:100%;margin:0 0 16px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
   .kcard{cursor:pointer;transition:border-color .15s,transform .15s}
   .kcard:hover{border-color:rgba(201,162,39,.6);transform:translateY(-2px)}
@@ -60,6 +63,20 @@
   .hopbar>div{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l))}
   .muted{color:var(--dim);font-size:.85rem}
   .empty{padding:30px;text-align:center;color:var(--dim)}
+  /* ---- Mobile / small screens ---- */
+  @media (max-width:700px){
+    .wrap{padding:16px 14px}
+    .topbar{padding:12px 14px}
+    .cards{grid-template-columns:1fr}
+    .cards.masonry{column-width:auto;column-count:1}
+    .metrics{grid-template-columns:repeat(2,1fr)}
+    .card{padding:16px 15px}
+    .tab{padding:8px 12px;font-size:.85rem}
+    .val{font-size:1.25rem}
+    input,select{font-size:16px}            /* avoids iOS zoom-on-focus */
+    /* wide data tables scroll sideways instead of overflowing the screen */
+    table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
+  }
 </style>
 </head>
 <body>
@@ -111,6 +128,8 @@ async function login(){
 function logout(){token=null;showLogin()}
 
 function go(v){view=v;render()}
+// Friendly per-kiosk coin name, falling back to "Coin 1/2" when unset.
+function coinName(k,s){return (k&&(s==1?k.coin1Name:k.coin2Name))||('Coin '+s)}
 function refresh(){
   if(!token) return;
   // Don't auto-rebuild while the user is editing a field (it would wipe input).
@@ -138,7 +157,7 @@ async function render(isAuto){
   if(view.name==='users') return renderUsers(el);
   if(view.name==='operators') return renderOperators(el);
   if(view.name==='images') return renderImages(el);
-  if(view.name==='monitoring') return renderMonitoring(el);
+  if(view.name==='monitoring') return renderMonitoring(el,isAuto);
   if(view.name==='destinations') return renderDestinations(el);
   if(view.name==='updates') return renderUpdates(el);
   if(view.name==='audit') return renderAudit(el);
@@ -230,8 +249,11 @@ async function delDest(id,count){
 }
 
 /* ---------- MONITORING (alerts + settings) ---------- */
-async function renderMonitoring(el){
+async function renderMonitoring(el,isAuto){
   const [alerts,settings]=await Promise.all([api('/api/system-alerts'),api('/api/settings')]);
+  const _msig=JSON.stringify([alerts,settings]);
+  if(isAuto && el.dataset.monsig===_msig) return;
+  el.dataset.monsig=_msig;
   const typeLabel=t=>t==='offline'?'Offline':t.startsWith('low_coin')?'Low coin':t;
   el.innerHTML=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Monitoring</div>
@@ -634,6 +656,10 @@ async function setPrice(id){
 /* ---------- MAIN DASHBOARD (all kiosks) ---------- */
 async function renderFleet(el,isAuto){
   const [kiosks,g]=await Promise.all([api('/api/kiosks'),api('/api/reports/global?period=today')]);
+  // On an auto-refresh, skip rebuilding the DOM when nothing changed (no flicker).
+  const _sig=JSON.stringify([kiosks,g,window._tagFilter]);
+  if(isAuto && el.dataset.fsig===_sig) return;
+  el.dataset.fsig=_sig;
   el.innerHTML=`
     <div class="row between" style="margin-bottom:18px">
       <div class="crumbs">Fleet Overview</div>
@@ -701,7 +727,7 @@ async function renderKiosk(el,id,isAuto){
   const tabs=['overview','transactions','sales','inventory','marketing','alerts','maintenance'];
   const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance'};
   const alerts=await api('/api/kiosks/'+id+'/alerts');
-  el.innerHTML=`
+  const _frame=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / ${esc(k.name)}</div>
     <div class="row between">
       <div><h2 style="font-size:1.4rem">${esc(k.name)}</h2><div class="muted">${esc(k.location)} · ${esc(k.destination?.name||'')}</div></div>
@@ -709,15 +735,26 @@ async function renderKiosk(el,id,isAuto){
     </div>
     <div class="tabs">${tabs.map(t=>`<button class="tab ${t===kioskTab?'active':''}" onclick="kioskTab='${t}';render()">${labels[t]}${t==='alerts'&&alerts.length?`<span class="badge">${alerts.length}</span>`:''}</button>`).join('')}</div>
     <div id="ktab"></div>`;
-  await renderKioskTab(id,k,alerts);
+  // Only rebuild the page frame when the header/tabs actually changed, so the
+  // #ktab content (and its change-signature) survives an unchanged auto-refresh.
+  // (Compare a stored signature — NOT el.innerHTML, which the browser normalises
+  // on read so it would never match and the frame would always rebuild.)
+  const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,kioskTab,alerts.length]);
+  if(!el.querySelector('#ktab')||el.dataset.kframe!==_fsig){ el.innerHTML=_frame; el.dataset.kframe=_fsig; }
+  await renderKioskTab(id,k,alerts,isAuto);
 }
-async function renderKioskTab(id,k,alerts){
+async function renderKioskTab(id,k,alerts,isAuto){
   const c=document.getElementById('ktab');
   if(kioskTab==='overview'){
     const h=k.health||{};
     const statusSel=['active','maintenance','out_of_service'].map(s=>`<option value="${s}" ${k.operationalStatus===s?'selected':''}>${stLabel(s)}</option>`).join('');
     const [dests,schedules]=admin()?await Promise.all([api('/api/destinations'),api('/api/kiosks/'+id+'/schedules')]):[[],[]];
     const pendingSched=schedules.filter(s=>!s.applied);
+    // Skip rebuilding the overview on an auto-refresh when nothing changed — the
+    // whole card is a pure function of k + alerts + schedules, so hash those.
+    const _ksig=JSON.stringify([k,alerts.length,pendingSched.length,dests.length]);
+    if(isAuto && c.dataset.ksig===_ksig) return;
+    c.dataset.ksig=_ksig;
     c.innerHTML=`
       <div class="grid metrics" style="margin-bottom:18px">
         ${metric('Device',(k.online?'● Online':'● Offline'),k.online?'ok':'err')}
@@ -725,7 +762,7 @@ async function renderKioskTab(id,k,alerts){
         ${metric('Software',esc(h.appVersion||k.appVersion||'-'))}
         ${metric('Open Alerts',alerts.length,alerts.length?'err':'')}
       </div>
-      <div class="grid cards">
+      <div class="grid cards masonry">
         <div class="card">
           <div class="label">Connectivity & Health</div>
           ${healthLine('Coin Hoppers',h.mdbConnected)}
@@ -733,16 +770,22 @@ async function renderKioskTab(id,k,alerts){
         </div>
         <div class="card">
           <div class="label">Coin Inventory</div>
-          ${hopper('Hopper 1',h.hopper1)}
-          ${hopper('Hopper 2',h.hopper2)}
+          ${hopper('Hopper 1 — '+coinName(k,1),h.hopper1)}
+          ${hopper('Hopper 2 — '+coinName(k,2),h.hopper2)}
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
             <div class="label" style="margin-bottom:8px">Coin availability${admin()?'':' (view only)'}</div>
             ${[1,2].map(s=>{const en=k['coin'+s+'Enabled']!==false;return `<div class="row between" style="padding:5px 0">
-              <span>Coin ${s} <span class="pill ${en?'on':'off'}" style="margin-left:6px">${en?'● Shown':'● Hidden'}</span></span>
+              <span>${esc(coinName(k,s))} <span class="pill ${en?'on':'off'}" style="margin-left:6px">${en?'● Shown':'● Hidden'}</span></span>
               ${admin()?`<button class="ghost" onclick="toggleCoin('${id}',${s},${en})">${en?'Disable':'Enable'}</button>`:''}
             </div>`}).join('')}
             <div class="muted" style="font-size:.78rem;margin-top:6px">Disable a coin if its hopper is out of stock — the kiosk hides it and shows only the available coin.</div>
           </div>
+          ${admin()?`<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+            <div class="label" style="margin-bottom:8px">Coin names <span class="muted" style="font-weight:400;font-size:.76rem">— replaces “Coin 1 / Coin 2” on the dashboard</span></div>
+            <div class="row" style="gap:8px;margin-bottom:8px"><span class="dim" style="width:48px;flex:0 0 48px">Coin 1</span><input id="cn1" value="${esc(k.coin1Name||'')}" placeholder="e.g. Big Five" style="flex:1;min-width:0"/></div>
+            <div class="row" style="gap:8px"><span class="dim" style="width:48px;flex:0 0 48px">Coin 2</span><input id="cn2" value="${esc(k.coin2Name||'')}" placeholder="e.g. Leopard" style="flex:1;min-width:0"/></div>
+            <div class="row" style="margin-top:10px"><button class="ghost" onclick="setCoinNames('${id}')">Save names</button><span id="cnmsg" class="ok"></span></div>
+          </div>`:''}
         </div>
         <div class="card">
           <div class="label">Operational Status</div>
@@ -834,7 +877,7 @@ async function renderKioskTab(id,k,alerts){
           <button class="ghost" onclick="exportKioskExcel('${id}')">Export Excel</button>
           <button class="ghost" onclick="exportKioskPDF('${id}')">Export PDF</button>
         </div>
-      </div>`+txTable(tx);
+      </div>`+txTable(tx,k);
   }
   else if(kioskTab==='sales'){
     window._kp=window._kp||'today';
@@ -857,8 +900,8 @@ async function renderKioskTab(id,k,alerts){
       </div>
       <div class="grid metrics">
         ${metric('Total Sales',s.totalSales)}${metric('Total Revenue',rand(s.totalRevenue))}
-        ${metric('Coin 1 Sales',s.coin1Sales)}${metric('Coin 1 Revenue',rand(s.coin1Revenue))}
-        ${metric('Coin 2 Sales',s.coin2Sales)}${metric('Coin 2 Revenue',rand(s.coin2Revenue))}
+        ${metric(coinName(k,1)+' Sales',s.coin1Sales)}${metric(coinName(k,1)+' Revenue',rand(s.coin1Revenue))}
+        ${metric(coinName(k,2)+' Sales',s.coin2Sales)}${metric(coinName(k,2)+' Revenue',rand(s.coin2Revenue))}
       </div>
       <div class="card" style="margin-top:18px"><div class="label">${chartTitle}</div><div style="position:relative;height:240px;margin-top:8px"><canvas id="rchart"></canvas></div></div>`;
     drawRevenueChart('rchart',ts);
@@ -899,12 +942,18 @@ async function renderKioskTab(id,k,alerts){
       </div>`;
   }
   else if(kioskTab==='alerts'){
+    const _asig=JSON.stringify(alerts);
+    if(isAuto && c.dataset.asig===_asig) return;
+    c.dataset.asig=_asig;
     if(!alerts.length){c.innerHTML='<div class="card ok">✓ No outstanding alerts.</div>';return}
     c.innerHTML='<table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
-      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>Coin ${a.coinSelected}</td><td>${rand(a.amount)}</td><td class="err">${esc(a.dispenseResult)}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${esc(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
+      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(a.dispenseResult)}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${esc(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
   }
   else if(kioskTab==='maintenance'){
     const m=await api('/api/kiosks/'+id+'/maintenance');
+    const _mtsig=JSON.stringify([m,admin()]);
+    if(isAuto && c.dataset.mtsig===_mtsig) return;
+    c.dataset.mtsig=_mtsig;
     c.innerHTML=(admin()?`<div class="row" style="margin-bottom:16px"><input id="mnote" placeholder="Add maintenance note…" style="flex:1"/><button class="btn" onclick="addMaint('${id}')">Add</button></div>`:'')+
       (m.length?'<table><thead><tr><th>Date/Time</th><th>By</th><th>Note</th></tr></thead><tbody>'+m.map(x=>`<tr><td class="dim">${esc((x.createdAt||'').substring(0,19))}</td><td>${esc(x.by)}</td><td>${esc(x.note)}</td></tr>`).join('')+'</tbody></table>':'<div class="empty">No maintenance records.</div>');
   }
@@ -916,7 +965,7 @@ async function renderKioskTab(id,k,alerts){
       const pct=h.currentCount==null?0:Math.min(100,Math.round((h.currentCount/1000)*100));
       const low=h.currentCount!=null&&h.currentCount<=50;
       return `<div class="card">
-        <div class="row between"><div class="label">Hopper ${h.slot} (Coin ${h.slot})</div><span class="muted">${esc(h.status)}</span></div>
+        <div class="row between"><div class="label">Hopper ${h.slot} (${esc(coinName(k,h.slot))})</div><span class="muted">${esc(h.status)}</span></div>
         <div class="row between" style="margin-top:8px"><span>Current</span><b class="${low?'err':''}">${h.currentCount==null?'—':h.currentCount}</b></div>
         <div class="hopbar"><div style="width:${pct}%"></div></div>
         <div class="row between" style="margin-top:12px"><span class="muted">Avg use / day</span><b>${Math.round(h.avgDailyUse*10)/10}</b></div>
@@ -932,7 +981,7 @@ async function renderKioskTab(id,k,alerts){
       <div class="pills">${periods.map(p=>`<button class="pchip ${p===window._invp?'active':''}" onclick="window._invp='${p}';render()">${p==='all'?'All Time':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div>
       <div class="card"><div class="muted" style="margin-bottom:8px">${rec.from.substring(0,10)} → ${rec.to.substring(0,10)}</div>
       <table><thead><tr><th>Coin</th><th>Paid</th><th>Paid revenue</th><th>Dispensed</th><th>Not dispensed</th><th>Refund owed</th><th>Refills added</th></tr></thead><tbody>
-      ${rec.coins.map(c2=>`<tr><td>Coin ${c2.slot}</td><td>${c2.paid}</td><td>${rand(c2.paidRevenue)}</td><td class="ok">${c2.dispensed}</td><td class="${c2.notDispensed?'err':'dim'}">${c2.notDispensed}</td><td class="${c2.refundOwed?'err':'dim'}">${rand(c2.refundOwed)}</td><td>${c2.refillsAdded}</td></tr>`).join('')}
+      ${rec.coins.map(c2=>`<tr><td>${esc(coinName(k,c2.slot))}</td><td>${c2.paid}</td><td>${rand(c2.paidRevenue)}</td><td class="ok">${c2.dispensed}</td><td class="${c2.notDispensed?'err':'dim'}">${c2.notDispensed}</td><td class="${c2.refundOwed?'err':'dim'}">${rand(c2.refundOwed)}</td><td>${c2.refillsAdded}</td></tr>`).join('')}
       </tbody></table>
       <p class="muted" style="font-size:.8rem;margin-top:10px">"Not dispensed" = paid but coin not released (refund owed). "Refund owed" = paid revenue minus dispensed value.</p>
       </div>
@@ -947,14 +996,15 @@ async function renderKioskTab(id,k,alerts){
 }
 function healthLine(label,ok){return `<div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;background:${ok?'var(--green)':'var(--red)'}"></span>${label}</span><span class="${ok?'ok':'err'}">${ok?'Connected':'Offline'}</span></div>`}
 function hopper(label,h){if(!h)return `<div class="row between" style="padding:8px 0"><span>${label}</span><span class="dim">—</span></div>`;const pct=Math.min(100,Math.round((h.coinCount/1000)*100));const col=h.status==='ok'?'':'err';return `<div style="padding:8px 0"><div class="row between"><span>${label} <span class="muted">(${esc(h.status)})</span></span><b class="${col}">${h.coinCount}</b></div><div class="hopbar"><div style="width:${pct}%"></div></div></div>`}
-function txTable(rows){
+function txTable(rows,k){
   if(!rows.length)return '<div class="empty">No transactions.</div>';
   return '<table><thead><tr><th>Date/Time</th><th>Transaction ID</th><th>Coin</th><th>Amount</th><th>Payment</th><th>Dispense</th></tr></thead><tbody>'+
-    rows.map(t=>`<tr><td class="dim">${esc((t.createdAt||'').substring(0,19))}</td><td class="mono">${esc(t.transactionId)}</td><td>Coin ${t.coinSelected}</td><td>${rand(t.amount)}</td><td class="${t.paymentResult==='approved'?'ok':'err'}">${esc(t.paymentResult)}</td><td class="${t.dispenseResult==='success'?'ok':(t.dispenseResult?'err':'dim')}">${esc(t.dispenseResult||'—')}</td></tr>`).join('')+'</tbody></table>';
+    rows.map(t=>`<tr><td class="dim">${esc((t.createdAt||'').substring(0,19))}</td><td class="mono">${esc(t.transactionId)}</td><td>${esc(coinName(k,t.coinSelected))}</td><td>${rand(t.amount)}</td><td class="${t.paymentResult==='approved'?'ok':'err'}">${esc(t.paymentResult)}</td><td class="${t.dispenseResult==='success'?'ok':(t.dispenseResult?'err':'dim')}">${esc(t.dispenseResult||'—')}</td></tr>`).join('')+'</tbody></table>';
 }
 async function setStatus(id){const v=document.getElementById('opstat').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({operationalStatus:v})});document.getElementById('opmsg').textContent='Updated';setTimeout(()=>render(),600)}
 async function setDest(id){const v=document.getElementById('kdest').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({destinationId:v})});document.getElementById('kmetamsg').textContent='Destination saved';setTimeout(()=>render(),600)}
 async function setTags(id){const v=document.getElementById('ktags').value.split(',').map(s=>s.trim()).filter(Boolean);await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({tags:v})});document.getElementById('kmetamsg').textContent='Tags saved';setTimeout(()=>render(),600)}
+async function setCoinNames(id){const coin1Name=document.getElementById('cn1').value,coin2Name=document.getElementById('cn2').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({coin1Name,coin2Name})});document.getElementById('cnmsg').textContent='Saved';setTimeout(()=>render(),600)}
 async function schedulePrice(id){
   const p=parseFloat(document.getElementById('schprice').value),w=document.getElementById('schwhen').value;
   if(!isFinite(p)||p<0){document.getElementById('schmsg').textContent='Enter a price';return}
@@ -1127,7 +1177,7 @@ async function exportKioskPDF(id){
   const {jsPDF}=window.jspdf;const doc=new jsPDF();
   doc.setFontSize(14);doc.text('Transactions — '+(k.name||id),14,16);
   doc.setFontSize(10);doc.text((r?('Range: '+r.from+' to '+r.to+'   ·   '):'')+'Generated '+new Date().toLocaleString(),14,22);
-  doc.autoTable({startY:28,styles:{fontSize:8},headStyles:{fillColor:[201,162,39]},head:[['Date','Transaction','Coin','Amount','Payment','Dispense']],body:tx.map(t=>[dt(t.createdAt),t.transactionId,'Coin '+t.coinSelected,'R'+(t.amount/100).toFixed(2),t.paymentResult,t.dispenseResult||'—'])});
+  doc.autoTable({startY:28,styles:{fontSize:8},headStyles:{fillColor:[201,162,39]},head:[['Date','Transaction','Coin','Amount','Payment','Dispense']],body:tx.map(t=>[dt(t.createdAt),t.transactionId,coinName(k,t.coinSelected),'R'+(t.amount/100).toFixed(2),t.paymentResult,t.dispenseResult||'—'])});
   doc.save((k.name||id).replace(/\W+/g,'_')+'_transactions.pdf');
 }
 async function exportKioskSalesExcel(id){
@@ -1135,7 +1185,7 @@ async function exportKioskSalesExcel(id){
   const r=kRange();const label=r?(r.from+' to '+r.to):(window._kp||'today');
   const [k,s,ts]=await Promise.all([api('/api/kiosks/'+id),api('/api/kiosks/'+id+'/sales?'+kQS()),api('/api/kiosks/'+id+'/timeseries?'+kTsQS())]);
   const wb=XLSX.utils.book_new();
-  const summary=[{Metric:'Kiosk',Value:k.name},{Metric:'Period',Value:label},{Metric:'Total Sales',Value:s.totalSales},{Metric:'Total Revenue (R)',Value:s.totalRevenue/100},{Metric:'Coin 1 Sales',Value:s.coin1Sales},{Metric:'Coin 1 Revenue (R)',Value:s.coin1Revenue/100},{Metric:'Coin 2 Sales',Value:s.coin2Sales},{Metric:'Coin 2 Revenue (R)',Value:s.coin2Revenue/100}];
+  const summary=[{Metric:'Kiosk',Value:k.name},{Metric:'Period',Value:label},{Metric:'Total Sales',Value:s.totalSales},{Metric:'Total Revenue (R)',Value:s.totalRevenue/100},{Metric:coinName(k,1)+' Sales',Value:s.coin1Sales},{Metric:coinName(k,1)+' Revenue (R)',Value:s.coin1Revenue/100},{Metric:coinName(k,2)+' Sales',Value:s.coin2Sales},{Metric:coinName(k,2)+' Revenue (R)',Value:s.coin2Revenue/100}];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summary),'Sales Summary');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ts.map(p=>({Date:p.date,Sales:p.sales,'Revenue (R)':p.revenue/100}))),'Daily');
   XLSX.writeFile(wb,(k.name||id).replace(/\W+/g,'_')+'_sales_'+label.replace(/\W+/g,'_')+'.xlsx');
@@ -1147,7 +1197,7 @@ async function exportKioskSalesPDF(id){
   const {jsPDF}=window.jspdf;const doc=new jsPDF();
   doc.setFontSize(14);doc.text('Sales — '+(k.name||id),14,16);
   doc.setFontSize(10);doc.text('Period: '+label+'   ·   Generated '+new Date().toLocaleString(),14,22);
-  doc.autoTable({startY:28,theme:'plain',body:[['Total sales',s.totalSales],['Total revenue','R'+(s.totalRevenue/100).toFixed(2)],['Coin 1 sales',s.coin1Sales],['Coin 1 revenue','R'+(s.coin1Revenue/100).toFixed(2)],['Coin 2 sales',s.coin2Sales],['Coin 2 revenue','R'+(s.coin2Revenue/100).toFixed(2)]]});
+  doc.autoTable({startY:28,theme:'plain',body:[['Total sales',s.totalSales],['Total revenue','R'+(s.totalRevenue/100).toFixed(2)],[coinName(k,1)+' sales',s.coin1Sales],[coinName(k,1)+' revenue','R'+(s.coin1Revenue/100).toFixed(2)],[coinName(k,2)+' sales',s.coin2Sales],[coinName(k,2)+' revenue','R'+(s.coin2Revenue/100).toFixed(2)]]});
   doc.save((k.name||id).replace(/\W+/g,'_')+'_sales_'+label.replace(/\W+/g,'_')+'.pdf');
 }
 async function exportGlobalExcel(){
