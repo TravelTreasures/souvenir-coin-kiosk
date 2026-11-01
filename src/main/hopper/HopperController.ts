@@ -126,8 +126,13 @@ export class HopperController extends EventEmitter {
     await new Promise<void>((resolve, reject) => {
       port.on('open', () => resolve())
       port.on('error', (err) => {
+        // Do NOT emit an 'error' event on this controller — nothing listens for
+        // it, so Node treats it as an unhandled error and aborts startup (no
+        // window). Just log it, mark the hoppers offline, and reject; index.ts
+        // catches the rejection and the app continues normally.
         console.error('[hopper] Serial error:', err.message)
-        this.emit('error', { type: 'serial', message: err.message })
+        this.connected = false
+        for (const h of Object.values(hoppers)) { h.status = 'offline'; this.emitStatus(h.address) }
         reject(err)
       })
     })

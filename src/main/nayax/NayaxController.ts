@@ -133,8 +133,11 @@ export class NayaxController extends EventEmitter {
     await new Promise<void>((resolve, reject) => {
       port.on('open', () => resolve())
       port.on('error', (err) => {
+        // Don't emit 'error' (nothing listens → Node would abort startup). Log,
+        // mark offline, and reject; index.ts catches it and the app continues
+        // with the card reader simply shown as offline.
         console.error('[Nayax] Serial error:', err.message)
-        this.emit('error', { type: 'serial', message: err.message })
+        this.connected = false
         reject(err)
       })
     })

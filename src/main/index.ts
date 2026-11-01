@@ -226,12 +226,11 @@ app.whenReady().then(async () => {
   // DevTools, etc.) in dev so testing is comfortable.
   if (isKiosk()) Menu.setApplicationMenu(null)
 
-  try {
-    await mdb.connect()
-    await nayax.connect()
-  } catch (err) {
-    console.error('[startup] Hardware connect error (continuing in simulation):', err)
-  }
+  // Connect each device independently so a missing/unwired one (e.g. the Nayax
+  // before its converter arrives, or a loose cable) never stops the other — or
+  // the app window — from starting. Each just shows offline.
+  try { await mdb.connect() } catch (err) { console.error('[startup] hopper connect failed (offline):', (err as Error)?.message ?? err) }
+  try { await nayax.connect() } catch (err) { console.error('[startup] Nayax connect failed (offline):', (err as Error)?.message ?? err) }
 
   // Reconcile hopper counts so the kiosk and the Fleet Admin always agree.
   // The MDB controller and the DB are two separate stores; align them at boot:
