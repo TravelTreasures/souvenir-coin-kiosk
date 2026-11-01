@@ -271,31 +271,41 @@ export class HopperController extends EventEmitter {
     const bus = this.bus!
     // Flow hopper pays ~7 coins/sec; allow generous headroom + fixed overhead.
     const deadline = Date.now() + 2000 + want * 1500
-    // "No-progress" guard: if no new coin is paid for this long while coins are
-    // still owed, the hopper is empty or jammed — the motor would otherwise keep
-    // spinning until the (possibly many-minute) deadline. Stop it immediately.
-    // A running hopper pays a coin every ~140 ms, so 3 s with no coin is decisive.
+    // "No-progress" guard: during a payout the hopper counts DOWN its live
+    // "coins remaining" field (d[1]) as each coin drops. (The "coins paid"
+    // field d[2] only updates once the whole payout FINISHES, so it must NOT be
+    // used to detect live progress.) If "remaining" stops falling for this long
+    // while coins are still owed, the hopper is empty or jammed — stop the motor
+    // instead of letting it spin to the (possibly many-minute) deadline.
     const STALL_MS = 3000
     let coinsPaid = 0
-    let lastPaid = 0
+    let lastRemaining = want
     let lastProgressAt = Date.now()
     while (Date.now() < deadline) {
       await delay(150)
       const s = this.parseLiveStatus(await bus.send(address, CMD.REQUEST_HOPPER_STATUS))
-      coinsPaid = s.coinsPaid
-      if (coinsPaid > lastPaid) {
-        lastPaid = coinsPaid
-        lastProgressAt = Date.now()
+      if (typeof s.remaining === 'number' && s.remaining < lastRemaining) {
+        lastRemaining = s.remaining
+        lastProgressAt = Date.now() // a coin dropped — payout is progressing
       }
+      // Live estimate = requested minus still-owed (the hopper's own count).
+      coinsPaid = Math.max(coinsPaid, want - lastRemaining)
       if (s.remaining === 0) break
       if (Date.now() - lastProgressAt > STALL_MS) {
         // Empty or jammed — stop the motor rather than spinning to the deadline.
         console.warn(
-          `[hopper ${address}] no coin for ${STALL_MS}ms — stopping (empty/jam). paid=${coinsPaid}/${want}`
+          `[hopper ${address}] no coin for ${STALL_MS}ms — stopping (empty/jam). paid≈${coinsPaid}/${want}`
         )
         await this.emergencyStop(address).catch(() => {})
         break
       }
+    }
+    // Prefer the hopper's authoritative "coins paid" count once it has settled.
+    try {
+      const fin = this.parseLiveStatus(await bus.send(address, CMD.REQUEST_HOPPER_STATUS))
+      if (fin.coinsPaid > coinsPaid) coinsPaid = fin.coinsPaid
+    } catch {
+      /* keep the live estimate */
     }
     return coinsPaid
   }
