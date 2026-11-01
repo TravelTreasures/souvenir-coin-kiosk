@@ -51,6 +51,17 @@ body,
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Native <select> dropdown items. Without this the options inherit the global
+   white text colour and render white-on-white in the OS popup (invisible on the
+   Linux kiosk). Force a readable dark-panel/light-text pairing. */
+select {
+  color: var(--text-white);
+}
+option {
+  background-color: #0a1628;
+  color: #ffffff;
+}
+
 /* ============================================================
    SCREEN BASE
    ============================================================ */

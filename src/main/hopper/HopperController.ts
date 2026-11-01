@@ -271,12 +271,31 @@ export class HopperController extends EventEmitter {
     const bus = this.bus!
     // Flow hopper pays ~7 coins/sec; allow generous headroom + fixed overhead.
     const deadline = Date.now() + 2000 + want * 1500
+    // "No-progress" guard: if no new coin is paid for this long while coins are
+    // still owed, the hopper is empty or jammed — the motor would otherwise keep
+    // spinning until the (possibly many-minute) deadline. Stop it immediately.
+    // A running hopper pays a coin every ~140 ms, so 3 s with no coin is decisive.
+    const STALL_MS = 3000
     let coinsPaid = 0
+    let lastPaid = 0
+    let lastProgressAt = Date.now()
     while (Date.now() < deadline) {
       await delay(150)
       const s = this.parseLiveStatus(await bus.send(address, CMD.REQUEST_HOPPER_STATUS))
       coinsPaid = s.coinsPaid
+      if (coinsPaid > lastPaid) {
+        lastPaid = coinsPaid
+        lastProgressAt = Date.now()
+      }
       if (s.remaining === 0) break
+      if (Date.now() - lastProgressAt > STALL_MS) {
+        // Empty or jammed — stop the motor rather than spinning to the deadline.
+        console.warn(
+          `[hopper ${address}] no coin for ${STALL_MS}ms — stopping (empty/jam). paid=${coinsPaid}/${want}`
+        )
+        await this.emergencyStop(address).catch(() => {})
+        break
+      }
     }
     return coinsPaid
   }
