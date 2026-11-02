@@ -25,11 +25,16 @@
  */
 
 import { app } from 'electron'
+import { copyFileSync, chmodSync, renameSync, existsSync, unlinkSync } from 'fs'
+import { dirname, join } from 'path'
 import { getConfig, setOtaStatus, updateConfig } from '../config/Config'
 
 // ---- minimal typing of the electron-updater surface we use ----
 interface UpdateInfo {
   version: string
+  // Path electron-updater saved the downloaded AppImage to (we install it
+  // ourselves rather than trusting the library's fragile file-swap step).
+  downloadedFile?: string
 }
 interface AutoUpdaterLike {
   autoDownload: boolean
@@ -50,6 +55,7 @@ let wired = false
 let busyPhase: '' | 'checking' | 'downloading' | 'installing' = ''
 let isIdle: () => boolean = () => true
 let pendingInstall = false // a build finished downloading and is ready to install
+let downloadedFile = '' // where electron-updater saved the new AppImage
 
 function loadUpdater(): AutoUpdaterLike | null {
   if (updater) return updater
@@ -105,6 +111,33 @@ function tryInstallIfSafe(reason: string): void {
   setOtaStatus('installing')
   updateConfig({ otaPreviousVersion: app.getVersion(), otaLastUpdateAt: new Date().toISOString() })
   busyPhase = 'installing'
+
+  // Install the AppImage OURSELVES instead of electron-updater's built-in
+  // swap (which has repeatedly failed on this kiosk — "unlink: no such file",
+  // "mv: cannot stat pending"). We copy the freshly-downloaded file in beside
+  // the running AppImage, then atomically rename it over APPIMAGE. rename()
+  // replaces the name even while the old binary is still executing (its inode
+  // stays alive until we exit), and it never fails on a missing target — so the
+  // two failure modes above cannot happen. Then relaunch the new file directly.
+  const target = process.env.APPIMAGE || ''
+  if (target && downloadedFile && existsSync(downloadedFile)) {
+    const tmp = join(dirname(target), '.souvenir-update.tmp')
+    try {
+      copyFileSync(downloadedFile, tmp)
+      chmodSync(tmp, 0o755)
+      renameSync(tmp, target) // atomic in-place replace
+      console.log(`[ota] self-installed -> ${target}; relaunching`)
+      app.relaunch({ execPath: target, args: ['--no-sandbox'] })
+      app.exit(0)
+      return
+    } catch (e) {
+      try { if (existsSync(tmp)) unlinkSync(tmp) } catch { /* ignore */ }
+      console.log('[ota] self-install failed, falling back to electron-updater:', (e as Error)?.message)
+    }
+  }
+
+  // Fallback: electron-updater's own installer (non-AppImage builds, or if we
+  // somehow have no downloaded-file path).
   try {
     updater?.quitAndInstall(true, true)
   } catch (e) {
@@ -155,7 +188,8 @@ function wireEvents(u: AutoUpdaterLike): void {
 
   u.on('update-downloaded', (...args: unknown[]) => {
     const info = (args[0] || {}) as UpdateInfo
-    console.log(`[ota] downloaded v${info.version}`)
+    downloadedFile = info.downloadedFile || ''
+    console.log(`[ota] downloaded v${info.version} -> ${downloadedFile || '(path unknown)'}`)
     pendingInstall = true
     busyPhase = ''
     setOtaStatus('pending')
