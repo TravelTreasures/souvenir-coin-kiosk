@@ -238,6 +238,13 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
       const r = await mdb.dispense(address, want)
       dispensed = r.success ? (r.coinsDispensed ?? want) : 0
     }
+    // "Empty all" means the hopper is now physically empty — force the tracked
+    // stock to 0 regardless of how many coins were counted out. (The tracked
+    // figure can drift from reality; emptying is the moment to re-zero it.)
+    if (quantity === 'all') {
+      simSetHopperCoinCount(address, 0)
+      setHopperCount(hopperId, 0)
+    }
     const after = mdb.getCoinCount(address)
     setHopperCount(hopperId, after)
     insertHopperEvent({ hopperId, type: 'empty', quantity: dispensed, oldStock: before, newStock: after, reason: 'Hopper empty for refill', operator: op.name, operatorRole: op.role })

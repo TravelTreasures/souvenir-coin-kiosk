@@ -72,7 +72,7 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
         <p
           style={{
             color: 'var(--text-gold)',
-            fontSize: '1rem',
+            fontSize: '1.4rem',
             letterSpacing: '0.25em',
             textTransform: 'uppercase',
             marginBottom: 8
@@ -83,7 +83,7 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
         <h1
           style={{
             fontFamily: 'var(--font-heading)',
-            fontSize: 'clamp(2rem, 5vw, 3.5rem)',
+            fontSize: 'clamp(2.8rem, 7vw, 4.6rem)',
             color: 'var(--text-white)',
             lineHeight: 1.15,
             textShadow: '0 2px 20px rgba(0,0,0,0.5)'
@@ -170,10 +170,12 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
         style={{
           position: 'absolute',
           bottom: 28,
-          color: 'rgba(255,255,255,0.2)',
-          fontSize: '0.75rem',
+          color: '#FFD23F',
+          fontSize: '0.95rem',
+          fontWeight: 600,
           letterSpacing: '0.15em',
-          textTransform: 'uppercase'
+          textTransform: 'uppercase',
+          textShadow: '0 1px 6px rgba(0,0,0,0.45)'
         }}
       >
         Card Payment Only · Contactless Accepted

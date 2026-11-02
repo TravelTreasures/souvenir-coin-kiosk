@@ -231,33 +231,52 @@ export class HopperController extends EventEmitter {
     if (!h.serial) return { success: false, coinsDispensed: 0, error: 'HOPPER_NOT_INITIALISED' }
 
     try {
-      // Ensure the hopper is enabled (harmless if already enabled).
-      await bus.send(address, CMD.ENABLE_HOPPER, [ENABLE_CODE])
+      // A ccTalk "dispense" carries the coin count in a SINGLE byte, so one
+      // command can ask for at most 255 coins. Large requests (e.g. "empty all"
+      // of a full hopper) must be split into batches. We use 200 for headroom.
+      const want = Math.max(0, Math.floor(quantity))
+      const BATCH = 200
+      let remaining = want
+      let totalPaid = 0
 
-      // DISPENSE (USE_SERNR): data = [serial LSB, serial mid, serial MSB, N coins].
-      const resp = await bus.send(address, CMD.DISPENSE_HOPPER_COINS, [...h.serial, quantity & 0xff])
-      if (resp.header === NAK) {
-        await this.refreshFaultFlags(address)
-        return { success: false, coinsDispensed: 0, error: 'DISPENSE_REJECTED' }
+      while (remaining > 0) {
+        const batch = Math.min(remaining, BATCH)
+
+        // Ensure the hopper is enabled (harmless if already enabled).
+        await bus.send(address, CMD.ENABLE_HOPPER, [ENABLE_CODE])
+
+        // DISPENSE (USE_SERNR): data = [serial LSB, serial mid, serial MSB, N].
+        const resp = await bus.send(address, CMD.DISPENSE_HOPPER_COINS, [...h.serial, batch & 0xff])
+        if (resp.header === NAK) {
+          await this.refreshFaultFlags(address)
+          if (totalPaid === 0) return { success: false, coinsDispensed: 0, error: 'DISPENSE_REJECTED' }
+          break
+        }
+
+        // Poll the hopper status until this batch finishes (or times out).
+        const paid = await this.waitForPayout(address, batch)
+        totalPaid += paid
+        remaining -= batch
+
+        // Paid fewer than asked → the hopper ran dry (or jammed). Stop here; no
+        // point commanding further batches into an empty hopper.
+        if (paid < batch) break
       }
 
-      // Poll the hopper status until the payout finishes (or times out).
-      const paid = await this.waitForPayout(address, quantity)
-
-      h.coinCount = Math.max(0, h.coinCount - paid)
+      h.coinCount = Math.max(0, h.coinCount - totalPaid)
       if (h.coinCount <= 0) h.status = 'empty'
       this.emitStatus(address)
 
-      if (paid < quantity) {
+      if (totalPaid < want) {
         // Partial payout — likely emptied or jammed mid-dispense.
         await this.refreshFaultFlags(address)
         return {
-          success: paid > 0,
-          coinsDispensed: paid,
-          error: paid > 0 ? 'PARTIAL_PAYOUT' : 'NO_COINS_PAID'
+          success: totalPaid > 0,
+          coinsDispensed: totalPaid,
+          error: totalPaid > 0 ? 'PARTIAL_PAYOUT' : 'NO_COINS_PAID'
         }
       }
-      return { success: true, coinsDispensed: paid }
+      return { success: true, coinsDispensed: totalPaid }
     } catch (e) {
       console.error(`[hopper ${address}] dispense error:`, (e as Error).message)
       h.status = 'offline'
@@ -278,36 +297,42 @@ export class HopperController extends EventEmitter {
     // while coins are still owed, the hopper is empty or jammed — stop the motor
     // instead of letting it spin to the (possibly many-minute) deadline.
     const STALL_MS = 3000
-    let coinsPaid = 0
-    let lastRemaining = want
+    // Count coins by how far the hopper's OWN "remaining" counter falls. The
+    // caller never passes more than one byte (≤255 per batch), so the hopper's
+    // starting count matches `want`; we still re-baseline to the first live
+    // reading so the figure is the hopper's truth, not the requested number.
+    let firstRemaining = want
+    let seenLive = false
+    let minRemaining = want
     let lastProgressAt = Date.now()
     while (Date.now() < deadline) {
       await delay(150)
       const s = this.parseLiveStatus(await bus.send(address, CMD.REQUEST_HOPPER_STATUS))
-      if (typeof s.remaining === 'number' && s.remaining < lastRemaining) {
-        lastRemaining = s.remaining
-        lastProgressAt = Date.now() // a coin dropped — payout is progressing
+      if (typeof s.remaining === 'number') {
+        if (!seenLive && s.remaining > 0) {
+          firstRemaining = s.remaining
+          minRemaining = s.remaining
+          seenLive = true
+        }
+        if (s.remaining < minRemaining) {
+          minRemaining = s.remaining
+          lastProgressAt = Date.now() // a coin dropped — payout is progressing
+        }
       }
-      // Live estimate = requested minus still-owed (the hopper's own count).
-      coinsPaid = Math.max(coinsPaid, want - lastRemaining)
-      if (s.remaining === 0) break
+      if (s.remaining === 0) {
+        minRemaining = 0
+        break
+      }
       if (Date.now() - lastProgressAt > STALL_MS) {
         // Empty or jammed — stop the motor rather than spinning to the deadline.
         console.warn(
-          `[hopper ${address}] no coin for ${STALL_MS}ms — stopping (empty/jam). paid≈${coinsPaid}/${want}`
+          `[hopper ${address}] no coin for ${STALL_MS}ms — stopping (empty/jam). paid≈${firstRemaining - minRemaining}`
         )
         await this.emergencyStop(address).catch(() => {})
         break
       }
     }
-    // Prefer the hopper's authoritative "coins paid" count once it has settled.
-    try {
-      const fin = this.parseLiveStatus(await bus.send(address, CMD.REQUEST_HOPPER_STATUS))
-      if (fin.coinsPaid > coinsPaid) coinsPaid = fin.coinsPaid
-    } catch {
-      /* keep the live estimate */
-    }
-    return coinsPaid
+    return Math.max(0, firstRemaining - minRemaining)
   }
 
   private parseLiveStatus(reply: { header: number; data: number[] }): HopperLiveStatus {

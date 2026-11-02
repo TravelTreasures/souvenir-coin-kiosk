@@ -35,6 +35,7 @@ fi
 # --- 1. Locate / normalise the AppImage --------------------------------------
 # A fixed filename means autostart and OTA updates never break when the version
 # number changes (electron-updater replaces the file in place, keeping the name).
+REPO_SLUG="TravelTreasures/souvenir-coin-kiosk"
 mkdir -p "$APP_DIR"
 if [ "${1:-}" != "" ] && [ -f "$1" ]; then
   echo "Using supplied AppImage: $1 -> $APP"
@@ -46,12 +47,22 @@ elif [ ! -f "$APP" ]; then
     mv -f "$CAND" "$APP"
   fi
 fi
+# Nothing local? Fetch the latest release straight from GitHub.
+if [ ! -f "$APP" ]; then
+  echo "No local AppImage — downloading the latest release…"
+  DL=$(curl -fsSL "https://api.github.com/repos/$REPO_SLUG/releases/latest" 2>/dev/null \
+        | grep -oE 'https://[^"]+\.AppImage' | head -1 || true)
+  if [ -n "${DL:-}" ]; then
+    curl -L -o "$APP" "$DL" && echo "[ok] downloaded: $DL"
+  else
+    echo "[!!] could not resolve a download URL (no internet?)."
+  fi
+fi
 if [ -f "$APP" ]; then
   chmod +x "$APP"
   echo "[ok] app: $APP"
 else
-  echo "[!!] $APP not found yet. Download the AppImage into $APP_DIR, then re-run."
-  echo "     (Autostart will still be configured to launch from this path.)"
+  echo "[!!] $APP not found. Put the AppImage in $APP_DIR and re-run."
 fi
 
 # --- 2. No sleep / no screen blank / no lock (runs in the user session) ------
@@ -105,6 +116,14 @@ StartupWMClass=Souvenir-Coin-Kiosk
 EOF
 update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
 echo "[ok] launcher installed (shows in the app menu)"
+
+# Also drop a clickable icon on the Desktop itself.
+DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
+mkdir -p "$DESKTOP_DIR"
+cp -f "$HOME/.local/share/applications/$DESKTOP_ID" "$DESKTOP_DIR/$DESKTOP_ID"
+chmod +x "$DESKTOP_DIR/$DESKTOP_ID"
+gio set "$DESKTOP_DIR/$DESKTOP_ID" metadata::trusted true 2>/dev/null || true
+echo "[ok] icon placed on the Desktop"
 
 # Pin it to the GNOME dock (the side bar / favourites).
 CUR=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo "@as []")

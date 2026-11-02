@@ -25,7 +25,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
         <p
           style={{
             color: 'var(--text-gold)',
-            fontSize: '1rem',
+            fontSize: '1.4rem',
             letterSpacing: '0.25em',
             textTransform: 'uppercase',
             marginBottom: 12
@@ -36,7 +36,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
         <h1
           style={{
             fontFamily: 'var(--font-heading)',
-            fontSize: 'clamp(1.8rem, 4vw, 2.8rem)',
+            fontSize: 'clamp(2.6rem, 6vw, 4rem)',
             color: 'var(--text-white)'
           }}
         >

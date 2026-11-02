@@ -51,6 +51,19 @@ body,
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Form fields must stay selectable and editable. The global `user-select: none`
+   above (which stops the kiosk UI being text-selected) otherwise blocks
+   tap-to-focus and the caret on the touchscreen — which also means the on-screen
+   keyboard never appears, because it only opens when a field receives focus. */
+input,
+textarea,
+select,
+[contenteditable] {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
 /* Native <select> dropdown items. Without this the options inherit the global
    white text colour and render white-on-white in the OS popup (invisible on the
    Linux kiosk). Force a readable dark-panel/light-text pairing. */
