@@ -44,13 +44,31 @@ export function VirtualKeyboard(): JSX.Element | null {
   useEffect(() => { targetRef.current = target }, [target])
 
   useEffect(() => {
+    // Find the editable field a tap/focus landed on — climbing from a child
+    // (icon, span) up to the <input>/<textarea> itself.
+    const editableFrom = (node: EventTarget | null): Field | null => {
+      let el = node as Element | null
+      while (el && el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') el = el.parentElement
+      return el && isEditable(el) ? (el as Field) : null
+    }
+    const show = (el: Field): void => {
+      setTarget((prev) => (prev === el ? prev : el))
+      // Keep the focused field visible above the keyboard.
+      setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80)
+    }
     const onFocusIn = (e: FocusEvent): void => {
-      if (isEditable(e.target as Element)) {
-        const el = e.target as Field
-        setTarget(el)
-        // Keep the focused field visible above the keyboard.
-        setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80)
-      }
+      const el = editableFrom(e.target)
+      if (el) show(el)
+    }
+    // Direct-tap fallback: on the touchscreen a focus event is occasionally
+    // missed (e.g. right after the Admin panel re-renders following a hopper
+    // test), which left the keyboard unable to re-open. Tapping any editable
+    // field now opens it regardless of whether a focus event fires. Runs in the
+    // capture phase; keyboard keys aren't editable, so tapping them is ignored
+    // and never changes the target.
+    const onPointerDown = (e: PointerEvent): void => {
+      const el = editableFrom(e.target)
+      if (el) show(el)
     }
     // Keys preventDefault their pointerdown, so tapping the keyboard never blurs
     // the field. Focus only leaves when the user taps another (non-editable)
@@ -58,12 +76,14 @@ export function VirtualKeyboard(): JSX.Element | null {
     const onFocusOut = (): void => {
       setTimeout(() => {
         if (!isEditable(document.activeElement)) setTarget(null)
-      }, 60)
+      }, 120)
     }
     document.addEventListener('focusin', onFocusIn)
+    document.addEventListener('pointerdown', onPointerDown, true)
     document.addEventListener('focusout', onFocusOut)
     return () => {
       document.removeEventListener('focusin', onFocusIn)
+      document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('focusout', onFocusOut)
     }
   }, [])

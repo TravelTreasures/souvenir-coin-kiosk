@@ -52,7 +52,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
           gap: 48,
           alignItems: 'flex-start',
           justifyContent: 'center',
-          marginTop: 24,
+          marginTop: 0,
           marginBottom: 60
         }}
       >

@@ -105,7 +105,7 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: 80,
-          marginTop: 40
+          marginTop: 0
         }}
       >
         {enabledCoins.map((coin) => (
