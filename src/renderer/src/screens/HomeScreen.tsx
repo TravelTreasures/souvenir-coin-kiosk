@@ -42,7 +42,8 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
         background: 'radial-gradient(ellipse at center top, var(--bg-mid) 0%, var(--bg-dark) 70%)',
         cursor: 'pointer',
         gap: 0,
-        padding: '60px 40px'
+        justifyContent: 'flex-start',
+        padding: '220px 40px 40px'
       }}
     >
       {/* Promotional banner (pushed from the fleet server) */}

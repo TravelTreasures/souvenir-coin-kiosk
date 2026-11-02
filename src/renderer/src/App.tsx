@@ -366,8 +366,9 @@ export default function App() {
         <MarketingScreensaver image={marketing.images[saverIdx % marketing.images.length]} />
       )}
 
-      {/* On-screen keyboard for touch input — shows only when a field is focused */}
-      <VirtualKeyboard />
+      {/* On-screen keyboard for touch input — mounted ONLY on the admin screen,
+          so it can never appear on a customer-facing screen. */}
+      {screen === 'admin' && <VirtualKeyboard />}
     </>
   )
 }

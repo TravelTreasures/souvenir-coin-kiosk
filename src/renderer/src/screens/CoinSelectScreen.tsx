@@ -16,7 +16,8 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
       className="screen fade-in"
       style={{
         background: 'radial-gradient(ellipse at center top, var(--bg-mid) 0%, var(--bg-dark) 70%)',
-        padding: '60px 40px',
+        justifyContent: 'flex-start',
+        padding: '180px 40px 40px',
         gap: 0
       }}
     >

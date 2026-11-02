@@ -25,6 +25,7 @@
  */
 
 import { app } from 'electron'
+import { spawn } from 'child_process'
 import { copyFileSync, chmodSync, renameSync, existsSync, unlinkSync } from 'fs'
 import { dirname, join } from 'path'
 import { getConfig, setOtaStatus, updateConfig } from '../config/Config'
@@ -56,6 +57,11 @@ let busyPhase: '' | 'checking' | 'downloading' | 'installing' = ''
 let isIdle: () => boolean = () => true
 let pendingInstall = false // a build finished downloading and is ready to install
 let downloadedFile = '' // where electron-updater saved the new AppImage
+// A dashboard "Update now" was requested. This MUST persist from the moment we
+// start the check all the way through to the install, so a forced update still
+// installs even after the one-shot force counter has been acknowledged (the
+// acknowledgement happens at check time to avoid re-checking on every tick).
+let forcedInstall = false
 
 function loadUpdater(): AutoUpdaterLike | null {
   if (updater) return updater
@@ -96,7 +102,9 @@ function withinWindow(startStr?: string, endStr?: string, now = new Date()): boo
 /** Install/relaunch only if it's still safe (idle + allowed) at the moment of install. */
 function tryInstallIfSafe(reason: string): void {
   const cfg = getConfig()
-  const force = (cfg.otaForceVersion ?? 0) > (cfg.otaForceVersionApplied ?? 0)
+  // forcedInstall persists a dashboard "Update now" across the whole cycle; the
+  // counter check covers a force that arrives after the download is already pending.
+  const force = forcedInstall || (cfg.otaForceVersion ?? 0) > (cfg.otaForceVersionApplied ?? 0)
   const windowOpen = cfg.otaWindowEnabled === false || withinWindow(cfg.otaWindowStart, cfg.otaWindowEnd)
   if (!pendingInstall) return
   if (!isIdle()) {
@@ -127,7 +135,20 @@ function tryInstallIfSafe(reason: string): void {
       chmodSync(tmp, 0o755)
       renameSync(tmp, target) // atomic in-place replace
       console.log(`[ota] self-installed -> ${target}; relaunching`)
-      app.relaunch({ execPath: target, args: ['--no-sandbox'] })
+      forcedInstall = false
+      // Relaunch the NEW AppImage as a fully detached process, then exit. Two
+      // things make this robust where electron's app.relaunch() failed with
+      // "Cannot mount AppImage / check FUSE":
+      //   1. detached + unref: the child outlives us and starts cleanly after
+      //      this process releases its own FUSE mount.
+      //   2. APPIMAGE_EXTRACT_AND_RUN=1: the new AppImage extracts and runs
+      //      instead of FUSE-mounting, so it can't collide with our mount (and
+      //      doesn't depend on FUSE being healthy at the moment of relaunch).
+      spawn(target, ['--no-sandbox'], {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1', KIOSK_MODE: process.env.KIOSK_MODE || 'kiosk' }
+      }).unref()
       app.exit(0)
       return
     } catch (e) {
@@ -155,6 +176,7 @@ function wireEvents(u: AutoUpdaterLike): void {
     const err = args[0]
     busyPhase = ''
     pendingInstall = false
+    forcedInstall = false
     const msg = err instanceof Error ? err.message : String(err)
     console.log('[ota] updater error:', msg)
     setOtaStatus('failed', msg)
@@ -183,6 +205,7 @@ function wireEvents(u: AutoUpdaterLike): void {
 
   u.on('update-not-available', () => {
     busyPhase = ''
+    forcedInstall = false // nothing to install; don't carry the force into a later cycle
     if (getConfig().otaStatus !== 'successful') setOtaStatus('idle')
   })
 
@@ -227,8 +250,13 @@ export async function runUpdateTick(opts: { dev: boolean }): Promise<void> {
   const u = loadUpdater()
   if (!u) return
 
-  // Acknowledge the one-shot "update now" so we don't loop on it.
-  if (force) updateConfig({ otaForceVersionApplied: cfg.otaForceVersion ?? 0 })
+  // Acknowledge the one-shot "update now" so we don't loop on it — but remember
+  // (in forcedInstall) that this cycle was forced, so the later install step can
+  // still bypass the window even though the counter now reads "applied".
+  if (force) {
+    forcedInstall = true
+    updateConfig({ otaForceVersionApplied: cfg.otaForceVersion ?? 0 })
+  }
 
   wireEvents(u)
   u.autoDownload = false
