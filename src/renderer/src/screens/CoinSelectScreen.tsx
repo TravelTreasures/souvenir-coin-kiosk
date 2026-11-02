@@ -16,13 +16,12 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
       className="screen fade-in"
       style={{
         background: 'radial-gradient(ellipse at center top, var(--bg-mid) 0%, var(--bg-dark) 70%)',
-        justifyContent: 'flex-start',
-        padding: '180px 40px 40px',
+        padding: '60px 40px',
         gap: 0
       }}
     >
-      {/* Heading */}
-      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+      {/* Heading — shifted up visually; the coin cards below stay put. */}
+      <div style={{ textAlign: 'center', marginBottom: 16, transform: 'translateY(-150px)' }}>
         <p
           style={{
             color: 'var(--text-gold)',
@@ -53,7 +52,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
           gap: 48,
           alignItems: 'flex-start',
           justifyContent: 'center',
-          marginTop: 0,
+          marginTop: 24,
           marginBottom: 60
         }}
       >

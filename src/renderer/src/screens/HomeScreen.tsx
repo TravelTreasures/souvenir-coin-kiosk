@@ -42,8 +42,7 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
         background: 'radial-gradient(ellipse at center top, var(--bg-mid) 0%, var(--bg-dark) 70%)',
         cursor: 'pointer',
         gap: 0,
-        justifyContent: 'flex-start',
-        padding: '220px 40px 40px'
+        padding: '60px 40px'
       }}
     >
       {/* Promotional banner (pushed from the fleet server) */}
@@ -68,8 +67,9 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: 20, marginTop: showPromo ? 40 : 0 }}>
+      {/* Header — shifted up visually (transform doesn't reflow, so the coins
+          below stay exactly where they were). */}
+      <div style={{ textAlign: 'center', marginBottom: 20, marginTop: showPromo ? 40 : 0, transform: 'translateY(-150px)' }}>
         <p
           style={{
             color: 'var(--text-gold)',
@@ -106,7 +106,7 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: 80,
-          marginTop: 0
+          marginTop: 40
         }}
       >
         {enabledCoins.map((coin) => (
