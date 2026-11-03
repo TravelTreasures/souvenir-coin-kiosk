@@ -45,6 +45,11 @@ export interface DispenseResult {
 const H1 = 3
 const H2 = 4
 
+// Reserve coins: stop taking payment once the tracked count is down to this many.
+// Keeps a small buffer so a count that's slightly ahead of the physical level can
+// never charge a customer for a coin that isn't there. 1 = keep the last coin.
+const RESERVE_COINS = 1
+
 interface HopperRuntime extends HopperState {
   serial?: number[] // 3-byte serial [LSB, mid, MSB], read at start-up
 }
@@ -225,7 +230,7 @@ export class HopperController extends EventEmitter {
   async isReadyToDispense(address: number): Promise<boolean> {
     const h = hoppers[address]
     if (!h) return false
-    if (this.isSimulated) return h.coinCount > 0
+    if (this.isSimulated) return h.coinCount > RESERVE_COINS
     if (!this.connected || !this.bus) return false
     const bus = this.bus
     try {
@@ -239,8 +244,9 @@ export class HopperController extends EventEmitter {
       // 2. Opto fault / jam? (refreshFaultFlags sets status to 'jam' on a fault)
       await this.refreshFaultFlags(address)
       if (h.status === 'jam') return false
-      // 3. Coins left to sell — down to the last one.
-      return h.coinCount > 0
+      // 3. Coins left to sell — stop at the reserve so the last coin isn't sold
+      //    (guards against the count being slightly ahead of the physical level).
+      return h.coinCount > RESERVE_COINS
     } catch {
       return false
     }
