@@ -255,6 +255,10 @@ export class NayaxController extends EventEmitter {
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
       // Wait for the reader to confirm it closed the session (returned to idle).
       await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
+      // Cooldown: disable the reader so it will NOT accept another tap until the
+      // next sale re-enables it (at the payment screen). Prevents a too-fast
+      // second tap immediately after a sale.
+      await this.sendCmd(CASHLESS.DISABLE)
     })
     this.sessionOpen = false
   }
@@ -269,6 +273,7 @@ export class NayaxController extends EventEmitter {
       this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
       await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
+      await this.sendCmd(CASHLESS.DISABLE) // cooldown — reader off until next sale
     })
     this.sessionOpen = false
   }
