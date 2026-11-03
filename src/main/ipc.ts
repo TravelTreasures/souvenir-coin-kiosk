@@ -57,11 +57,14 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
     const hopperAddress =
       coinSelected === 1 ? HopperController.HOPPER_1_ADDR : HopperController.HOPPER_2_ADDR
 
-    // STOCK CHECK BEFORE PAYMENT: never charge a card for an empty hopper.
-    // If the selected coin is out of stock, stop here and ask the customer to
-    // choose another — no Nayax transaction is initiated.
-    if (mdb.getCoinCount(hopperAddress) <= 0) {
-      logError('warn', 'dispense', 'Coin unavailable — hopper empty; payment not initiated', { coinSelected })
+    // HARDWARE READINESS CHECK BEFORE PAYMENT: never charge a card for a coin we
+    // can't deliver. We ask the hopper ITSELF (online + no jam + physical level
+    // sensor not low) rather than trusting the tracked counter, which can drift.
+    // If it can't dispense, stop here and ask the customer to choose another —
+    // NO Nayax transaction is initiated, so nothing is charged.
+    const ready = await mdb.isReadyToDispense(hopperAddress)
+    if (!ready) {
+      logError('warn', 'dispense', 'Coin unavailable (hopper empty/offline/jam) — payment not initiated', { coinSelected })
       return { status: 'out_of_stock', errorCode: 'HOPPER_EMPTY' }
     }
 

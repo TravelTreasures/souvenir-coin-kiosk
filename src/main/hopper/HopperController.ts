@@ -214,6 +214,38 @@ export class HopperController extends EventEmitter {
     }
   }
 
+  /**
+   * Whether the hopper can dispense a coin RIGHT NOW. Called before authorising a
+   * card so we don't charge for a coin we can't deliver — while still selling
+   * every coin down to the last one. Checks: the hopper responds (not offline),
+   * has no opto fault/jam, and the tracked count is > 0. We gate on the count
+   * (kept accurate by the dispense/empty logic) rather than the low-level sensor,
+   * because that sensor trips while sellable coins still remain below it.
+   */
+  async isReadyToDispense(address: number): Promise<boolean> {
+    const h = hoppers[address]
+    if (!h) return false
+    if (this.isSimulated) return h.coinCount > 0
+    if (!this.connected || !this.bus) return false
+    const bus = this.bus
+    try {
+      // 1. Hopper alive? (offline → can't deliver, don't charge)
+      const poll = await bus.send(address, CMD.SIMPLE_POLL)
+      if (poll.header !== ACK) {
+        h.status = 'offline'
+        this.emitStatus(address)
+        return false
+      }
+      // 2. Opto fault / jam? (refreshFaultFlags sets status to 'jam' on a fault)
+      await this.refreshFaultFlags(address)
+      if (h.status === 'jam') return false
+      // 3. Coins left to sell — down to the last one.
+      return h.coinCount > 0
+    } catch {
+      return false
+    }
+  }
+
   // ------------------------------------------------------------------
   // Status / counts
   // ------------------------------------------------------------------
