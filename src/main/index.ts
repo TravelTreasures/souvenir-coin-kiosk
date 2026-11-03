@@ -271,6 +271,30 @@ app.whenReady().then(async () => {
   startFleetSync(mdb, nayax)
   createMainWindow()
 
+  // Hardware watchdog. The USB serial devices and the hoppers can take several
+  // seconds to be ready after boot, so a single connect at startup sometimes
+  // leaves them offline until a manual relaunch. This retries on a timer —
+  // reconnecting a dropped bus and re-initialising any offline hopper — so the
+  // hardware comes online on its own once ready (no restart), and also recovers
+  // from a transient disconnect during the day. Runs only with real hardware.
+  if (!USE_SIMULATION) {
+    setInterval(() => {
+      void (async () => {
+        try {
+          if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
+          else if (!mdb.anyHopperOnline()) await mdb.reinitOfflineHoppers()
+        } catch {
+          /* ignore — retry next tick */
+        }
+        try {
+          if (!nayax.isConnected()) await nayax.connect().catch(() => undefined)
+        } catch {
+          /* ignore — retry next tick */
+        }
+      })()
+    }, 8000)
+  }
+
   // Show the Hardware Simulator window only when actually simulating (dev, or
   // SIMULATE_HARDWARE=true for bench testing). A real kiosk running the real
   // MDB hopper + Nayax reader never sees it.

@@ -192,6 +192,28 @@ export class HopperController extends EventEmitter {
     return this.connected
   }
 
+  /** True once at least one hopper has answered (so the bus AND a hopper are live). */
+  anyHopperOnline(): boolean {
+    return Object.values(hoppers).some((h) => h.status !== 'offline')
+  }
+
+  /**
+   * Re-initialise any hopper still marked offline. At boot the USB/ccTalk bus can
+   * open before the hoppers have powered up, leaving them offline; a watchdog
+   * calls this every few seconds so they come online on their own once ready
+   * (no app restart needed). Simulation and a closed bus are no-ops.
+   */
+  async reinitOfflineHoppers(): Promise<void> {
+    if (this.isSimulated || !this.connected || !this.bus) return
+    for (const addr of [H1, H2]) {
+      if (hoppers[addr]?.status === 'offline') {
+        await this.initHopper(addr).catch(() => {
+          /* still not ready — leave offline, the watchdog will try again */
+        })
+      }
+    }
+  }
+
   // ------------------------------------------------------------------
   // Status / counts
   // ------------------------------------------------------------------

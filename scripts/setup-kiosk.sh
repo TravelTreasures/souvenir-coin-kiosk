@@ -145,12 +145,12 @@ cat > "$HOME/.config/autostart/souvenir-kiosk.desktop" <<EOF
 Type=Application
 Name=Souvenir Coin Kiosk
 Comment=Launches the kiosk full-screen in locked kiosk mode
-Exec=env KIOSK_MODE=kiosk $APP --no-sandbox
+Exec=bash -c 'sleep 12; exec env KIOSK_MODE=kiosk $APP --no-sandbox'
 Icon=$ICON
 X-GNOME-Autostart-enabled=true
 Terminal=false
 EOF
-echo "[ok] autostart installed (full-screen kiosk mode)"
+echo "[ok] autostart installed (full-screen kiosk mode, 12s hardware-settle delay)"
 
 cat <<'DONE'
 

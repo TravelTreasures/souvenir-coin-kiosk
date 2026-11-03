@@ -639,7 +639,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                 borderRadius: 12, cursor: 'pointer', fontSize: '0.95rem'
               }}
             >
-              Refresh
+              Re-check hardware
             </button>
           </div>
         )}

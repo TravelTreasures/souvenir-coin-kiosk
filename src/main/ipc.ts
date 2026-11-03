@@ -447,6 +447,21 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
   // System status
   // ----------------------------------------------------------------
   ipcMain.handle('system:getStatus', async () => {
+    // Actively RE-CHECK the hardware before reporting, so the Diagnostics screen
+    // and its Refresh button force a real reconnect/re-init on demand (not just a
+    // reread of the last status): reconnect a dropped bus, re-init any offline
+    // hopper, and reconnect the Nayax if its port is closed.
+    try {
+      if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
+      else if (!mdb.anyHopperOnline()) await mdb.reinitOfflineHoppers()
+    } catch {
+      /* ignore — report whatever state we're in */
+    }
+    try {
+      if (!nayax.isConnected()) await nayax.connect().catch(() => undefined)
+    } catch {
+      /* ignore */
+    }
     const [h1, h2] = await Promise.all([
       mdb.getHopperStatus(HopperController.HOPPER_1_ADDR),
       mdb.getHopperStatus(HopperController.HOPPER_2_ADDR)
