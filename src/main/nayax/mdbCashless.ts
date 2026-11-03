@@ -69,8 +69,14 @@ export function vendSuccess(item = 1): number[] {
 /** First-byte classification of a reader reply. */
 export type ReaderEvent = 'begin_session' | 'approved' | 'denied' | 'ended' | 'ack' | 'unknown'
 
-export function classifyReply(bytes: number[]): ReaderEvent {
-  if (bytes.length === 0) return 'unknown'
+export function classifyReply(raw: number[]): ReaderEvent {
+  if (raw.length === 0) return 'unknown'
+  // Unsolicited ACTIVITY data (card tap, approval, etc.) is prefixed by the
+  // adapter with the MDB device address — 0x10 for cashless device #1 (0x60 for
+  // #2) — followed by the real response code. Direct query replies (e.g. 00 ack,
+  // 01 config) have NO such prefix. Strip a leading cashless address so we read
+  // the actual code: e.g. "10 03 C3 50" → begin session, "10 05 …" → approved.
+  const bytes = (raw[0] === 0x10 || raw[0] === 0x60) && raw.length > 1 ? raw.slice(1) : raw
   switch (bytes[0]) {
     case 0x03:
       return 'begin_session'
