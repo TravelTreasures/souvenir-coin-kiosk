@@ -45,6 +45,7 @@ const u16 = (n: number): number[] => [(n >> 8) & 0xff, n & 0xff]
 
 /** Static cashless commands (byte arrays). */
 export const CASHLESS = {
+  RESET: [0x10], // soft power-cycle — clears a hung reader before re-init
   ENABLE: [0x14, 0x01],
   DISABLE: [0x14, 0x00],
   CANCEL_READER: [0x14, 0x02],
@@ -86,6 +87,8 @@ export function classifyReply(raw: number[]): ReaderEvent {
       return 'denied'
     case 0x07:
       return 'ended'
+    case 0x08:
+      return 'ended' // session cancelled/closed by the reader
     case 0x00:
       return 'ack'
     default:

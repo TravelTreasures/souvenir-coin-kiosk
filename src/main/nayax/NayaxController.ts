@@ -148,14 +148,20 @@ export class NayaxController extends EventEmitter {
     this.connected = true
     console.log(`[Nayax] MDB-RS232 serial port ${this.serialPath} opened`)
 
-    // Initialise the cashless reader: config → price range → enable.
+    // Initialise the cashless reader: RESET → config → price range → enable.
+    // The RESET (soft power-cycle) FIRST is important: if the reader is stuck in
+    // a hung "Thank You"/session state from before, a plain reboot that only
+    // re-sent config/enable would NOT clear it (only cutting its power would).
+    // Resetting here lets a normal reboot recover a hung reader.
     try {
+      await this.sendCmd(CASHLESS.RESET)
+      await delay(400) // let the reader fully reset before we re-configure it
       await this.sendCmd(CASHLESS.CONFIG)
       await delay(150)
       await this.sendCmd(CASHLESS.SET_PRICE_RANGE)
       await delay(150)
       await this.sendCmd(CASHLESS.ENABLE)
-      console.log('[Nayax] card reader configured and enabled')
+      console.log('[Nayax] card reader reset, configured and enabled')
     } catch (e) {
       console.error('[Nayax] reader init failed:', (e as Error).message)
     }
@@ -238,9 +244,17 @@ export class NayaxController extends EventEmitter {
   async confirmVend(item = 1): Promise<void> {
     if (this.isSimulated || !this.sessionOpen) return
     await this.safe(async () => {
+      // Capture the charge, then WAIT for the reader to acknowledge it before
+      // closing the session. Firing session-complete too early (before the
+      // reader has processed vend-success) leaves it hung on "Thank You" with no
+      // "ended" reply — the intermittent hang we were chasing.
+      this.inbox = []
       await this.sendCmd(vendSuccess(item))
-      await delay(80)
+      await this.waitFor((e) => e === 'ack' || e === 'ended', 2500)
+      this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
+      // Wait for the reader to confirm it closed the session (returned to idle).
+      await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
     })
     this.sessionOpen = false
   }
@@ -249,9 +263,12 @@ export class NayaxController extends EventEmitter {
   async cancelVend(): Promise<void> {
     if (this.isSimulated || !this.sessionOpen) return
     await this.safe(async () => {
+      this.inbox = []
       await this.sendCmd(CASHLESS.VEND_CANCEL)
-      await delay(80)
+      await this.waitFor((e) => e === 'ack' || e === 'ended', 2500)
+      this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
+      await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
     })
     this.sessionOpen = false
   }
