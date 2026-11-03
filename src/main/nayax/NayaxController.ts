@@ -402,13 +402,15 @@ export class NayaxController extends EventEmitter {
   private async cancelStraySession(): Promise<void> {
     if (this.cancellingStray || this.saleInProgress) return
     this.cancellingStray = true
-    console.log('[Nayax] stray tap outside a sale — cancelling empty session')
+    console.log('[Nayax] stray session (start button / early tap) — closing with session-complete')
     await this.safe(async () => {
-      await this.sendCmd(CASHLESS.VEND_CANCEL)
-      await delay(80)
+      // The reader opened a bare session (no vend requested). The ONLY valid way
+      // to dismiss it is SESSION_COMPLETE (13 04) — NOT vend-cancel (13 01), which
+      // is out-of-sequence here and makes the reader fault ("command out of
+      // sequence" / stuck on "Transaction Canceled"). Session-complete makes the
+      // reader reply End Session (10 07) and return to idle, still enabled.
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
-      await delay(120)
-      await this.sendCmd(CASHLESS.ENABLE) // re-arm: keep reader "ready", not out of order
+      await this.waitFor((e) => e === 'ended', 2000)
     })
     this.sessionOpen = false
     this.cancellingStray = false
