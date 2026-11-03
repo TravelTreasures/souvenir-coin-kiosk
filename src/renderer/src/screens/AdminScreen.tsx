@@ -602,8 +602,8 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
             {sysStatus ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {[
-                  { label: 'MDB Bus', ok: sysStatus.mdbConnected },
-                  { label: 'Nayax Terminal', ok: sysStatus.nayaxConnected },
+                  { label: 'Hopper Bus (ccTalk)', ok: sysStatus.mdbConnected },
+                  { label: 'Nayax Terminal (MDB)', ok: sysStatus.nayaxConnected },
                   { label: 'Hopper 1', ok: sysStatus.hopper1.status === 'ok',
                     detail: `${sysStatus.hopper1.status} · ${sysStatus.hopper1.coinCount} coins` },
                   { label: 'Hopper 2', ok: sysStatus.hopper2.status === 'ok',

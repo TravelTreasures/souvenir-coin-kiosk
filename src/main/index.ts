@@ -219,6 +219,22 @@ function registerServiceShortcuts(): void {
   globalShortcut.register('CommandOrControl+Alt+Shift+K', () => switchMode('kiosk'))
 }
 
+// Single-instance guard. A second copy of the app (a stray autostart, a leftover
+// from an OTA relaunch, or a manual launch) would fight the running one for the
+// serial ports — the loser reports "Cannot lock port" and shows the hoppers/Nayax
+// OFFLINE even though the hardware is fine. Only one instance may run; any extra
+// launch quits immediately and hands focus to the one already running.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+  process.exit(0)
+}
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  }
+})
+
 app.whenReady().then(async () => {
   appMode = resolveMode()
 

@@ -110,3 +110,18 @@ export function normaliseReply(buf: Buffer): number[] {
 
 export const toHex = (bytes: readonly number[] | Buffer): string =>
   [...bytes].map((b) => b.toString(16).padStart(2, '0')).join(' ').toUpperCase()
+
+/**
+ * Parse ONE complete ASCII-hex reply line from the Waferstar MDB-RS232 into raw
+ * MDB bytes. The box sends replies as ASCII text — hex pairs separated by spaces
+ * and terminated by CR/LF — e.g. "01 03 17 10 01 02 78 0D B3". Hex pairs may also
+ * arrive glued ("010317..."). Non-hex tokens are ignored.
+ */
+export function parseAsciiHexLine(line: string): number[] {
+  const out: number[] = []
+  for (const tok of line.trim().split(/\s+/)) {
+    if (!/^[0-9a-fA-F]+$/.test(tok) || tok.length % 2 !== 0) continue
+    for (let i = 0; i < tok.length; i += 2) out.push(parseInt(tok.slice(i, i + 2), 16))
+  }
+  return out
+}

@@ -28,7 +28,7 @@ import {
   requestVend,
   vendSuccess,
   classifyReply,
-  normaliseReply,
+  parseAsciiHexLine,
   toHex,
   type ReaderEvent
 } from './mdbCashless'
@@ -99,6 +99,7 @@ export class NayaxController extends EventEmitter {
 
   // production serial + reader state
   private port: SerialWritable | null = null
+  private rxText = '' // accumulates ASCII reply text until a CR/LF line terminator
   private inbox: { event: ReaderEvent; bytes: number[] }[] = []
   private waiter: { pred: (e: ReaderEvent) => boolean; resolve: (m: { event: ReaderEvent; bytes: number[] } | null) => void; timer: ReturnType<typeof setTimeout> } | null = null
   private sessionOpen = false
@@ -290,13 +291,24 @@ export class NayaxController extends EventEmitter {
   // Production serial helpers
   // ------------------------------------------------------------------
   private onData(buf: Buffer): void {
-    const bytes = normaliseReply(buf)
-    if (bytes.length === 0) return
-    const event = classifyReply(bytes)
-    console.log(`[Nayax] RX ${toHex(bytes)} (${event})`)
-    this.inbox.push({ event, bytes })
-    if (this.inbox.length > 30) this.inbox.shift()
-    this.flushWaiter()
+    // The Waferstar MDB-RS232 replies in ASCII text (hex pairs + spaces,
+    // terminated by CR/LF). A single MDB reply can be split across several serial
+    // reads, so accumulate and only process whole CR/LF-terminated lines.
+    this.rxText += buf.toString('ascii')
+    let nl: number
+    while ((nl = this.rxText.search(/[\r\n]/)) >= 0) {
+      const line = this.rxText.slice(0, nl)
+      this.rxText = this.rxText.slice(nl + 1)
+      const bytes = parseAsciiHexLine(line)
+      if (bytes.length === 0) continue
+      const event = classifyReply(bytes)
+      console.log(`[Nayax] RX ${toHex(bytes)} (${event})`)
+      this.inbox.push({ event, bytes })
+      if (this.inbox.length > 30) this.inbox.shift()
+      this.flushWaiter()
+    }
+    // Guard against an unterminated run of junk growing unbounded.
+    if (this.rxText.length > 4096) this.rxText = this.rxText.slice(-512)
   }
 
   private flushWaiter(): void {
