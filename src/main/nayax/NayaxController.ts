@@ -156,12 +156,18 @@ export class NayaxController extends EventEmitter {
     try {
       await this.sendCmd(CASHLESS.RESET)
       await delay(400) // let the reader fully reset before we re-configure it
-      await this.sendCmd(CASHLESS.CONFIG)
-      await delay(150)
+      await this.sendCmd(CASHLESS.CONFIG) // declare VMC feature level 3
+      await delay(200)
       await this.sendCmd(CASHLESS.SET_PRICE_RANGE)
-      await delay(150)
+      await delay(200)
+      // Put the reader into ALWAYS IDLE mode: no touch-screen "start button"
+      // session — the customer selects the coin on OUR screen, we send the vend
+      // request, and the reader waits for the tap. This removes the stray
+      // "Product not chosen" hang at the protocol level.
+      await this.sendCmd(CASHLESS.ALWAYS_IDLE)
+      await delay(300)
       await this.sendCmd(CASHLESS.ENABLE)
-      console.log('[Nayax] card reader reset, configured and enabled')
+      console.log('[Nayax] card reader reset, configured (level 3), always-idle enabled')
     } catch (e) {
       console.error('[Nayax] reader init failed:', (e as Error).message)
     }
@@ -195,28 +201,22 @@ export class NayaxController extends EventEmitter {
     this.saleInProgress = true
     this.inbox = [] // clear stale reader events before a new sale
     try {
-      await this.sendCmd(CASHLESS.ENABLE)
-
-      // 1. Wait for the customer to present a card (reader "begin session").
-      const began = await this.waitFor(
-        (e) => e === 'begin_session',
-        timeoutMs && timeoutMs > 0 ? timeoutMs : NayaxController.PAYMENT_TIMEOUT_MS
-      )
-      if (!began) {
-        await this.safe(() => this.sendCmd(CASHLESS.CANCEL_READER))
-        return { result: 'timeout', timestamp: new Date() }
-      }
-
-      // 2. Ask the reader to authorise the price.
+      // ALWAYS IDLE MODE: the reader is already enabled and waiting for a vend
+      // request (set up at connect). The customer has already chosen the coin on
+      // OUR screen, so send the vend request straight away — the reader then shows
+      // the amount and waits for the card tap. There is no reader-initiated "start
+      // button" session, so no stray "Product not chosen" state.
       await this.sendCmd(requestVend(amountCents, 1))
 
-      // 3. Wait for approval / denial.
+      // Wait for the customer to tap and the reader to approve / deny / end.
       const resp = await this.waitFor(
         (e) => e === 'approved' || e === 'denied' || e === 'ended',
-        NayaxController.APPROVAL_TIMEOUT_MS
+        timeoutMs && timeoutMs > 0 ? timeoutMs : NayaxController.PAYMENT_TIMEOUT_MS
       )
       if (!resp) {
-        await this.safe(() => this.cancelVend())
+        // No tap in time — cancel the pending vend and return the reader to idle
+        // (still enabled / always-idle, NOT disabled).
+        await this.safe(() => this.abortVend())
         return { result: 'timeout', timestamp: new Date() }
       }
       if (resp.event === 'approved') {
@@ -238,6 +238,17 @@ export class NayaxController extends EventEmitter {
     } finally {
       this.saleInProgress = false
     }
+  }
+
+  /** Abort a pending vend (no card was tapped) and return the reader to idle,
+   *  keeping it enabled in always-idle mode — never disabled (no "out of order"). */
+  private async abortVend(): Promise<void> {
+    await this.safe(async () => {
+      await this.sendCmd(CASHLESS.VEND_CANCEL)
+      await delay(80)
+      await this.sendCmd(CASHLESS.SESSION_COMPLETE)
+    })
+    this.sessionOpen = false
   }
 
   /** Finalise an approved sale AFTER the coin was dispensed (captures the charge). */
@@ -295,16 +306,17 @@ export class NayaxController extends EventEmitter {
       return true
     }
     // PRODUCTION: cancel any vend and close the session so the reader goes idle.
+    // Do NOT send CANCEL_READER (14 02) — it can drop the reader out of
+    // always-idle/enabled and show "out of order". VEND_CANCEL + SESSION_COMPLETE
+    // returns it to idle while it stays enabled and ready for the next sale.
     await this.safe(async () => {
       await this.sendCmd(CASHLESS.VEND_CANCEL)
       await delay(80)
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
-      await delay(80)
-      await this.sendCmd(CASHLESS.CANCEL_READER)
     })
     this.sessionOpen = false
     this.saleInProgress = false
-    console.log('[Nayax] CANCEL/reset sent to reader')
+    console.log('[Nayax] CANCEL/reset sent to reader (vend-cancel + session-complete)')
     return true
   }
 

@@ -49,8 +49,16 @@ export const CASHLESS = {
   ENABLE: [0x14, 0x01],
   DISABLE: [0x14, 0x00],
   CANCEL_READER: [0x14, 0x02],
-  CONFIG: [0x11, 0x00, 0x01, 0x00, 0x00, 0x00],
+  // SETUP / Config Data: 11 00 <VMC feature level> <cols> <rows> <display info>.
+  // Declare feature level 3 so the reader will accept ALWAYS IDLE mode (a level-3
+  // feature). This matches the known-good Nayax VPOS Touch MDB-RS232 sequence.
+  CONFIG: [0x11, 0x00, 0x03, 0x00, 0x00, 0x02],
   SET_PRICE_RANGE: [0x11, 0x01, 0xff, 0xff, 0x00, 0x00],
+  // EXPANSION / FEATURE ENABLE, bit 5 (0x20) = Always Idle. Puts the reader into
+  // "selection first": it has NO touch-screen start button session and simply
+  // waits for the VMC's vend request, which is exactly our kiosk flow.
+  // ⚠ Only safe on readers that support it — the Nayax VPOS Touch does.
+  ALWAYS_IDLE: [0x17, 0x04, 0x00, 0x00, 0x00, 0x20],
   VEND_CANCEL: [0x13, 0x01],
   SESSION_COMPLETE: [0x13, 0x04],
   REQUEST_ID: [0x17, 0x00]
