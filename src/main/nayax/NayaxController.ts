@@ -254,11 +254,10 @@ export class NayaxController extends EventEmitter {
       this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
       // Wait for the reader to confirm it closed the session (returned to idle).
+      // Leave the reader ENABLED so it shows "ready", not "out of order". A too-fast
+      // second tap right after this is handled by cancelStraySession (safety net),
+      // which cancels the stray session without blanking the reader.
       await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
-      // Cooldown: disable the reader so it will NOT accept another tap until the
-      // next sale re-enables it (at the payment screen). Prevents a too-fast
-      // second tap immediately after a sale.
-      await this.sendCmd(CASHLESS.DISABLE)
     })
     this.sessionOpen = false
   }
@@ -273,7 +272,7 @@ export class NayaxController extends EventEmitter {
       this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
       await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
-      await this.sendCmd(CASHLESS.DISABLE) // cooldown — reader off until next sale
+      // Leave the reader ENABLED (ready), not disabled — see confirmVend.
     })
     this.sessionOpen = false
   }
@@ -328,6 +327,13 @@ export class NayaxController extends EventEmitter {
       this.inbox.push({ event, bytes })
       if (this.inbox.length > 30) this.inbox.shift()
       this.flushWaiter()
+      // Safety net: a card tapped when NO sale is active (a stray tap, e.g. right
+      // after a sale) opens a session the VMC will never vend into — the reader
+      // then sits stuck on "Product not chosen". Cancel it at once and disable the
+      // reader so it returns to idle instead of hanging.
+      if (event === 'begin_session' && !this.saleInProgress) {
+        void this.cancelStraySession()
+      }
     }
     // Guard against an unterminated run of junk growing unbounded.
     if (this.rxText.length > 4096) this.rxText = this.rxText.slice(-512)
@@ -371,6 +377,29 @@ export class NayaxController extends EventEmitter {
   private async endSession(): Promise<void> {
     await this.safe(() => this.sendCmd(CASHLESS.SESSION_COMPLETE))
     this.sessionOpen = false
+  }
+
+  // ------------------------------------------------------------------
+  // A card was tapped when NO sale is active (stray tap). Close the empty
+  // session the reader just opened and re-arm it (leave it ENABLED/ready), so
+  // it returns to the idle "ready" screen instead of hanging on "Product not
+  // chosen" — and WITHOUT disabling it (a disabled reader shows "Cashless out
+  // of order"). Debounced so a burst of begin_session lines can't stack up.
+  // ------------------------------------------------------------------
+  private cancellingStray = false
+  private async cancelStraySession(): Promise<void> {
+    if (this.cancellingStray || this.saleInProgress) return
+    this.cancellingStray = true
+    console.log('[Nayax] stray tap outside a sale — cancelling empty session')
+    await this.safe(async () => {
+      await this.sendCmd(CASHLESS.VEND_CANCEL)
+      await delay(80)
+      await this.sendCmd(CASHLESS.SESSION_COMPLETE)
+      await delay(120)
+      await this.sendCmd(CASHLESS.ENABLE) // re-arm: keep reader "ready", not out of order
+    })
+    this.sessionOpen = false
+    this.cancellingStray = false
   }
 
   private async safe(fn: () => Promise<void>): Promise<void> {
