@@ -243,23 +243,6 @@ export class NayaxController extends EventEmitter {
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
     })
     this.sessionOpen = false
-    await this.rearmIdle()
-  }
-
-  /**
-   * Return the reader to a clean idle "tap your card" state after a transaction.
-   * After a vend the reader can sit on its "Thank You" display and ignore the
-   * next tap; a DISABLE→ENABLE cycle forces it back through the adapter's state
-   * machine (… → Disable → Enable = ready for the next card). Called after every
-   * session end so the terminal is always ready for the next customer.
-   */
-  private async rearmIdle(): Promise<void> {
-    if (this.isSimulated || !this.connected) return
-    await this.safe(async () => {
-      await this.sendCmd(CASHLESS.DISABLE)
-      await delay(150)
-      await this.sendCmd(CASHLESS.ENABLE)
-    })
   }
 
   /** Cancel an approved sale because the coin could NOT be dispensed (refund). */
@@ -271,7 +254,6 @@ export class NayaxController extends EventEmitter {
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
     })
     this.sessionOpen = false
-    await this.rearmIdle()
   }
 
   // ------------------------------------------------------------------
@@ -367,7 +349,6 @@ export class NayaxController extends EventEmitter {
   private async endSession(): Promise<void> {
     await this.safe(() => this.sendCmd(CASHLESS.SESSION_COMPLETE))
     this.sessionOpen = false
-    await this.rearmIdle()
   }
 
   private async safe(fn: () => Promise<void>): Promise<void> {
