@@ -360,7 +360,8 @@ export default function App() {
         />
       )}
 
-      {/* Out of service / maintenance — customer-facing unavailable screen. */}
+      {/* Out of service / maintenance — customer-facing unavailable screen. The
+          wording differs: "maintenance" is temporary, "out of service" is closed. */}
       {!serving && screen !== 'admin' && (
         <div
           className="screen fade-in"
@@ -371,7 +372,7 @@ export default function App() {
             textAlign: 'center'
           }}
         >
-          <div style={{ fontSize: '4.5rem', marginBottom: 24 }}>🛠️</div>
+          <div style={{ fontSize: '4.5rem', marginBottom: 24 }}>{opStatus === 'out_of_service' ? '⛔' : '🛠️'}</div>
           <h1
             style={{
               fontFamily: 'var(--font-heading)',
@@ -380,13 +381,15 @@ export default function App() {
               marginBottom: 16
             }}
           >
-            Temporarily Unavailable
+            {opStatus === 'out_of_service' ? 'Out of Service' : 'Temporarily Unavailable'}
           </h1>
           <div className="gold-divider" style={{ marginBottom: 24 }} />
           <p style={{ color: 'var(--text-dim)', fontSize: 'clamp(1.1rem, 3vw, 1.5rem)', maxWidth: 520, lineHeight: 1.5 }}>
-            This kiosk is currently under maintenance.
-            <br />
-            Please check back shortly.
+            {opStatus === 'out_of_service' ? (
+              <>This kiosk is currently out of service.<br />We apologise for the inconvenience.</>
+            ) : (
+              <>This kiosk is currently under maintenance.<br />Please check back shortly.</>
+            )}
           </p>
         </div>
       )}

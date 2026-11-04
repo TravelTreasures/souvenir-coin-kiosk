@@ -822,7 +822,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
           ${admin()?`
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
             <div class="label" style="margin-bottom:6px">Schedule a price change</div>
-            <div class="row" style="flex-wrap:wrap"><span class="dim">R</span><input type="number" id="schprice" min="0" step="1" placeholder="price" style="width:90px"/><input type="datetime-local" id="schwhen"/><button class="ghost" onclick="schedulePrice('${id}')">Schedule</button><span id="schmsg" class="ok"></span></div>
+            <div class="row" style="flex-wrap:wrap"><span class="dim">R</span><input type="number" id="schprice" min="0" step="1" placeholder="price" style="width:90px"/><input type="date" id="schdate" style="width:150px"/><input type="time" id="schtime" style="width:110px"/><button class="ghost" onclick="schedulePrice('${id}')">Schedule</button><span id="schmsg" class="ok"></span></div>
             ${pendingSched.length?`<div style="margin-top:10px">${pendingSched.map(s=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="muted">${rand(s.priceCents)} on ${esc(s.applyAt.replace('T',' ').substring(0,16))}</span><button class="ghost" style="padding:4px 10px;font-size:.78rem" onclick="cancelSchedule(${s.id})">Cancel</button></div>`).join('')}</div>`:'<div class="muted" style="margin-top:8px;font-size:.8rem">No scheduled changes</div>'}
           </div>`:''}
         </div>
@@ -1019,10 +1019,13 @@ async function setTags(id){const v=document.getElementById('ktags').value.split(
 async function setCoinNames(id){const coin1Name=document.getElementById('cn1').value,coin2Name=document.getElementById('cn2').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({coin1Name,coin2Name})});document.getElementById('cnmsg').textContent='Saved';setTimeout(()=>render(),600)}
 async function setCombo(id){const comboEnabled=document.getElementById('comboOn').checked,comboAllowKioskOverride=document.getElementById('comboOverride').checked,comboPriceCents=Math.max(0,Math.round(parseFloat(document.getElementById('comboPrice').value||'0')*100));await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({comboEnabled,comboPriceCents,comboAllowKioskOverride})});document.getElementById('combomsg').textContent='Saved — applies on next kiosk sync';setTimeout(()=>render(),800)}
 async function schedulePrice(id){
-  const p=parseFloat(document.getElementById('schprice').value),w=document.getElementById('schwhen').value;
+  const p=parseFloat(document.getElementById('schprice').value);
+  const d=document.getElementById('schdate').value,t=document.getElementById('schtime').value;
   if(!isFinite(p)||p<0){document.getElementById('schmsg').textContent='Enter a price';return}
-  if(!w){document.getElementById('schmsg').textContent='Pick a date/time';return}
-  const r=await api('/api/kiosks/'+id+'/schedule',{method:'POST',body:JSON.stringify({priceCents:Math.round(p*100),applyAt:new Date(w).toISOString()})});
+  if(!d||!t){document.getElementById('schmsg').textContent='Pick a date and time';return}
+  const applyAt=new Date(d+'T'+t);
+  if(isNaN(applyAt.getTime())){document.getElementById('schmsg').textContent='Invalid date/time';return}
+  const r=await api('/api/kiosks/'+id+'/schedule',{method:'POST',body:JSON.stringify({priceCents:Math.round(p*100),applyAt:applyAt.toISOString()})});
   document.getElementById('schmsg').textContent=r.error||'Scheduled';if(!r.error)setTimeout(()=>render(),700);
 }
 async function cancelSchedule(sid){await api('/api/schedules/cancel',{method:'POST',body:JSON.stringify({id:sid})});render()}
