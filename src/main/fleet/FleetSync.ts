@@ -174,6 +174,15 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         if (conf.coins) {
           updateConfig({ coinsEnabled: { '1': conf.coins['1'] !== false, '2': conf.coins['2'] !== false } })
         }
+        // Combo Sale: apply the fleet enable, fleet price and override permission.
+        // The kiosk's LOCAL override price (comboPriceCentsLocal) is untouched here.
+        if (conf.combo) {
+          updateConfig({
+            comboEnabled: conf.combo.enabled === true,
+            comboPriceCents: typeof conf.combo.priceCents === 'number' ? conf.combo.priceCents : 0,
+            comboAllowKioskOverride: conf.combo.allowOverride === true
+          })
+        }
         if (Array.isArray(conf.operators)) {
           updateConfig({ operators: conf.operators })
         }

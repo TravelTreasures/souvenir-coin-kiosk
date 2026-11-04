@@ -79,14 +79,21 @@ export function ThankYouScreen({ coinSelected, onDone, delay = 8000 }: ThankYouS
           marginBottom: 40
         }}
       >
-        Please collect your souvenir coin
+        {coinSelected === 3 ? 'Please collect your two souvenir coins' : 'Please collect your souvenir coin'}
         <br />
         from the collection tray below.
       </p>
 
-      {/* Coin */}
-      <div style={{ marginBottom: 48 }}>
-        <CoinImage coin={coinSelected} size={160} />
+      {/* Coin (or both coins for a combo) */}
+      <div style={{ marginBottom: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {coinSelected === 3 ? (
+          <>
+            <CoinImage coin={1} size={140} style={{ marginRight: -26, zIndex: 2 }} />
+            <CoinImage coin={2} size={140} style={{ marginLeft: -26 }} />
+          </>
+        ) : (
+          <CoinImage coin={coinSelected} size={160} />
+        )}
       </div>
 
       {/* Collection tray indicator */}

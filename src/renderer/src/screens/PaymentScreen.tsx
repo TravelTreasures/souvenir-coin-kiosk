@@ -68,12 +68,19 @@ export function PaymentScreen({ coinSelected, onResult, onBack, priceCents }: Pa
       </h1>
       <div className="gold-divider" />
 
-      {/* Selected coin */}
+      {/* Selected coin (or combo) */}
       <div style={{ textAlign: 'center', marginTop: 16, marginBottom: 32 }}>
         <p style={{ color: 'var(--text-dim)', fontSize: '1rem', marginBottom: 18 }}>
-          Selected Coin:
+          {coinSelected === 3 ? 'Combo — Coin 1 + Coin 2:' : 'Selected Coin:'}
         </p>
-        <CoinImage coin={coinSelected} size={140} />
+        {coinSelected === 3 ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CoinImage coin={1} size={120} style={{ marginRight: -22, zIndex: 2 }} />
+            <CoinImage coin={2} size={120} style={{ marginLeft: -22 }} />
+          </div>
+        ) : (
+          <CoinImage coin={coinSelected} size={140} />
+        )}
       </div>
 
       {/* Price */}

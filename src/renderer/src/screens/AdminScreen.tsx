@@ -16,7 +16,7 @@ interface SalesReport {
 }
 interface Transaction {
   id: number; transactionId: string; amount: number
-  coinSelected: 1 | 2; paymentResult: string; dispenseResult: string | null
+  coinSelected: 1 | 2 | 3; paymentResult: string; dispenseResult: string | null
   nayaxAuthCode: string | null; nayaxCardType: string | null
   alertSent: number; createdAt: string
 }
@@ -65,6 +65,10 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const [priceInput, setPriceInput] = useState('')
   const [priceMsg, setPriceMsg] = useState('')
   const [priceFocused, setPriceFocused] = useState(false)
+  const [combo, setCombo] = useState<{ enabled: boolean; priceCents: number; allowOverride: boolean; fleetPriceCents: number; localPriceCents: number | null } | null>(null)
+  const [comboPriceInput, setComboPriceInput] = useState('')
+  const [comboMsg, setComboMsg] = useState('')
+  const [comboPriceFocused, setComboPriceFocused] = useState(false)
   const [txTimeout, setTxTimeout] = useState('45')
   const [txTimeoutMsg, setTxTimeoutMsg] = useState('')
   const [appVersion, setAppVersion] = useState('')
@@ -99,6 +103,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
       window.kiosk.getMode().then(setMode)
       window.kiosk.getConfig().then((c) => setPriceInput((c.coinPriceCents / 100).toFixed(2)))
       window.kiosk.getTransactionTimeout?.().then((s) => setTxTimeout(String(s || 45)))
+      window.kiosk.getCombo?.().then((c) => { setCombo(c); if (!comboPriceFocused) setComboPriceInput((c.priceCents / 100).toFixed(2)) }).catch(() => {})
       window.kiosk.getFleet().then(setFleet)
     }
   }, [tab, salesPeriod])
@@ -152,6 +157,22 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
     setPriceMsg('Saved!')
     setTimeout(() => setPriceMsg(''), 2000)
   }, [priceInput])
+
+  const saveComboPrice = useCallback(async () => {
+    const value = parseFloat(comboPriceInput)
+    if (!Number.isFinite(value) || value < 0) { setComboMsg('Enter a valid price'); return }
+    const r = await window.kiosk.setComboPrice?.(Math.round(value * 100))
+    if (r && r.ok) { setCombo(r.combo ?? null); setComboMsg('Saved!') }
+    else setComboMsg(r?.error || 'Not allowed')
+    setTimeout(() => setComboMsg(''), 2500)
+  }, [comboPriceInput])
+
+  const toggleCombo = useCallback(async (on: boolean) => {
+    const r = await window.kiosk.setComboEnabled?.(on)
+    if (r && r.ok) { setCombo(r.combo ?? null); setComboMsg('Saved!') }
+    else setComboMsg(r?.error || 'Not allowed')
+    setTimeout(() => setComboMsg(''), 2500)
+  }, [])
 
   const saveTxTimeout = useCallback(async () => {
     const v = parseInt(txTimeout, 10)
@@ -504,7 +525,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                     <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '10px 12px', color: 'var(--text-dim)' }}>{t.createdAt.substring(0, 19)}</td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-dim)', fontFamily: 'monospace', fontSize: '0.78rem' }}>{t.transactionId}</td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-white)' }}>Coin {t.coinSelected}</td>
+                      <td style={{ padding: '10px 12px', color: 'var(--text-white)' }}>{t.coinSelected === 3 ? 'Combo' : `Coin ${t.coinSelected}`}</td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-white)' }}>{formatRand(t.amount)}</td>
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{ color: t.paymentResult === 'approved' ? 'var(--success-green)' : 'var(--error-red)' }}>
@@ -571,7 +592,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                       <tr key={a.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '10px 12px', color: 'var(--text-dim)' }}>{a.createdAt.substring(0, 19)}</td>
                         <td style={{ padding: '10px 12px', color: 'var(--text-white)', fontFamily: 'monospace', fontSize: '0.78rem' }}>{a.transactionId}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-white)' }}>Coin {a.coinSelected}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-white)' }}>{a.coinSelected === 3 ? 'Combo' : `Coin ${a.coinSelected}`}</td>
                         <td style={{ padding: '10px 12px', color: 'var(--text-white)' }}>{formatRand(a.amount)}</td>
                         <td style={{ padding: '10px 12px', color: 'var(--error-red)' }}>{a.dispenseResult ?? 'not dispensed'}</td>
                         <td style={{ padding: '10px 12px' }}>
@@ -691,6 +712,58 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                 </button>
                 {priceMsg && <span style={{ color: 'var(--success-green)' }}>{priceMsg}</span>}
               </div>
+            </div>
+
+            <h3 style={{ color: 'var(--text-white)', marginBottom: 16, fontSize: '1.1rem' }}>
+              Combo Sale (Coin 1 + Coin 2)
+            </h3>
+            <div
+              style={{
+                padding: '18px 20px', borderRadius: 14, marginBottom: 28,
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(201,162,39,0.15)'
+              }}
+            >
+              {!combo || !combo.enabled ? (
+                <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                  The Combo Sale is {combo && combo.localPriceCents === null && !combo.enabled ? 'turned off' : 'not enabled by the fleet'}. When the fleet enables it, you can turn it on or off here.
+                </p>
+              ) : (
+                <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: 14 }}>
+                  Active combo price: <span style={{ color: 'var(--text-gold)' }}>R{(combo.priceCents / 100).toFixed(2)}</span>
+                  {combo.allowOverride ? ' — you may set a kiosk-specific price below.' : ' — fleet-controlled (price override not permitted).'}
+                </p>
+              )}
+
+              {combo && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: combo.allowOverride ? 14 : 0 }}>
+                  <input type="checkbox" checked={combo.enabled} onChange={(e) => toggleCombo(e.target.checked)} />
+                  <span style={{ color: 'var(--text-white)', fontSize: '0.95rem' }}>Offer the Combo Sale on this kiosk</span>
+                </label>
+              )}
+
+              {combo && combo.allowOverride && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ color: 'var(--text-gold)', fontSize: '1.2rem' }}>R</span>
+                  <input
+                    type="number" min={0} step="0.01"
+                    value={comboPriceInput}
+                    onChange={(e) => setComboPriceInput(e.target.value)}
+                    onFocus={() => setComboPriceFocused(true)}
+                    onBlur={() => setComboPriceFocused(false)}
+                    style={{
+                      width: 140, padding: '10px 14px', borderRadius: 10,
+                      border: '1px solid rgba(201,162,39,0.4)',
+                      background: 'rgba(255,255,255,0.05)',
+                      color: 'var(--text-white)', fontSize: '1.1rem'
+                    }}
+                  />
+                  <button className="btn btn-gold" style={{ padding: '12px 28px' }} onClick={saveComboPrice}>
+                    Save Combo Price
+                  </button>
+                </div>
+              )}
+              {comboMsg && <span style={{ color: 'var(--success-green)', display: 'inline-block', marginTop: 10 }}>{comboMsg}</span>}
             </div>
 
             <h3 style={{ color: 'var(--text-white)', marginBottom: 16, fontSize: '1.1rem' }}>

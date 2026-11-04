@@ -23,7 +23,7 @@ import {
   getUnresolvedAlerts,
   resolveAlert
 } from './database/Database'
-import { getPriceCents, setPriceCents, getConfig, updateConfig, getAdminPin, verifyAdminPin, changeAdminPin, getTransactionTimeoutSeconds, setTransactionTimeoutSeconds, getCoinsEnabled, getOperators } from './config/Config'
+import { getPriceCents, setPriceCents, getConfig, updateConfig, getAdminPin, verifyAdminPin, changeAdminPin, getTransactionTimeoutSeconds, setTransactionTimeoutSeconds, getCoinsEnabled, getOperators, getComboConfig, setComboLocalPrice, setComboEnabledLocal } from './config/Config'
 import type { OperatorRole } from './config/Config'
 import { startFleetSync, stopFleetSync } from './fleet/FleetSync'
 import { v4 as uuidv4 } from 'uuid'
@@ -50,22 +50,43 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
   // ----------------------------------------------------------------
   // Payment
   // ----------------------------------------------------------------
-  ipcMain.handle('payment:request', async (_event, coinSelected: 1 | 2) => {
+  ipcMain.handle('payment:request', async (_event, coinSelected: 1 | 2 | 3) => {
     saleInProgress = true
     try {
-    const priceCents = getPriceCents()
-    const hopperAddress =
-      coinSelected === 1 ? HopperController.HOPPER_1_ADDR : HopperController.HOPPER_2_ADDR
+    // coinSelected 1|2 = individual coin; 3 = Combo Sale (one of each).
+    const isCombo = coinSelected === 3
+    const combo = getComboConfig()
+    const priceCents = isCombo ? combo.priceCents : getPriceCents()
+    const H1 = HopperController.HOPPER_1_ADDR
+    const H2 = HopperController.HOPPER_2_ADDR
+    const hopperAddress = coinSelected === 2 ? H2 : H1
 
-    // HARDWARE READINESS CHECK BEFORE PAYMENT: never charge a card for a coin we
-    // can't deliver. We ask the hopper ITSELF (online + no jam + physical level
-    // sensor not low) rather than trusting the tracked counter, which can drift.
-    // If it can't dispense, stop here and ask the customer to choose another —
-    // NO Nayax transaction is initiated, so nothing is charged.
-    const ready = await mdb.isReadyToDispense(hopperAddress)
-    if (!ready) {
-      logError('warn', 'dispense', 'Coin unavailable (hopper empty/offline/jam) — payment not initiated', { coinSelected })
-      return { status: 'out_of_stock', errorCode: 'HOPPER_EMPTY' }
+    // Map a hopper error code → stored dispense_result code.
+    const COMM_FAILURES = ['CCTALK_COMM_FAILURE', 'HOPPER_COMM_FAILURE', 'HOPPER_OFFLINE', 'HOPPER_NOT_CONNECTED', 'HOPPER_NOT_INITIALISED']
+    const mapDispenseCode = (code: string): 'empty' | 'jam' | 'comm_failure' | 'unknown_error' =>
+      code === 'HOPPER_EMPTY' ? 'empty' : code === 'HOPPER_JAM' ? 'jam' : COMM_FAILURES.includes(code) ? 'comm_failure' : 'unknown_error'
+
+    // HARDWARE READINESS CHECK BEFORE PAYMENT: never charge for a coin we can't
+    // deliver. We ask the hopper ITSELF (online + no jam + physical level sensor
+    // not low) rather than trusting the tracked counter. A COMBO needs BOTH
+    // hoppers ready, since it dispenses one of each. If not ready, stop here — NO
+    // Nayax transaction is initiated, so nothing is charged.
+    if (isCombo) {
+      if (!combo.enabled) {
+        logError('warn', 'dispense', 'Combo requested but it is disabled — payment not initiated', {})
+        return { status: 'out_of_stock', errorCode: 'COMBO_DISABLED' }
+      }
+      const [ready1, ready2] = [await mdb.isReadyToDispense(H1), await mdb.isReadyToDispense(H2)]
+      if (!ready1 || !ready2) {
+        logError('warn', 'dispense', 'Combo unavailable (a hopper empty/offline/jam) — payment not initiated', { ready1, ready2 })
+        return { status: 'out_of_stock', errorCode: 'HOPPER_EMPTY' }
+      }
+    } else {
+      const ready = await mdb.isReadyToDispense(hopperAddress)
+      if (!ready) {
+        logError('warn', 'dispense', 'Coin unavailable (hopper empty/offline/jam) — payment not initiated', { coinSelected })
+        return { status: 'out_of_stock', errorCode: 'HOPPER_EMPTY' }
+      }
     }
 
     try {
@@ -88,37 +109,42 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
           alertSent: 0
         })
 
-        // Attempt to dispense (stock was already verified above).
+        if (isCombo) {
+          // Dispense ONE of EACH coin. If the first fails, don't attempt the second.
+          const d1 = await mdb.dispense(H1, 1)
+          const d2 = d1.success ? await mdb.dispense(H2, 1) : { success: false as const, error: 'SKIPPED_AFTER_FAILURE' }
+          // Refresh BOTH tracked counts (stock movement) regardless of outcome.
+          setHopperCount(1, mdb.getCoinCount(H1))
+          setHopperCount(2, mdb.getCoinCount(H2))
+          if (d1.success && d2.success) {
+            updateDispenseResult(transactionId, 'success')
+            await nayax.confirmVend().catch(() => undefined)
+            return { status: 'dispensed', transactionId }
+          }
+          // One or both coins failed → refund the whole combo (don't capture money
+          // for an incomplete pair).
+          const errorCode = (!d1.success ? d1.error : d2.error) ?? 'unknown_error'
+          updateDispenseResult(transactionId, mapDispenseCode(errorCode), 0)
+          logError('critical', 'dispense', 'Combo payment approved but a coin was not dispensed', { transactionId, coin1Ok: d1.success, coin2Ok: d2.success, error: errorCode })
+          await nayax.cancelVend().catch(() => undefined)
+          return { status: 'dispense_failed', errorCode, transactionId }
+        }
+
+        // Single coin — attempt to dispense (stock was already verified above).
         const dispenseResult = await mdb.dispense(hopperAddress, 1)
 
         if (dispenseResult.success) {
           updateDispenseResult(transactionId, 'success')
           // Sync coin count to DB
           const newCount = mdb.getCoinCount(hopperAddress)
-          setHopperCount(coinSelected, newCount)
+          setHopperCount(coinSelected as 1 | 2, newCount)
           // Coin delivered — finalise the card charge (vend success + session end).
           await nayax.confirmVend().catch(() => undefined)
           return { status: 'dispensed', transactionId }
         } else {
           // Payment taken but dispense failed – CRITICAL
           const errorCode = dispenseResult.error ?? 'unknown_error'
-          const COMM_FAILURES = [
-            'CCTALK_COMM_FAILURE',
-            'HOPPER_COMM_FAILURE',
-            'HOPPER_OFFLINE',
-            'HOPPER_NOT_CONNECTED',
-            'HOPPER_NOT_INITIALISED'
-          ]
-          const dispenseCode =
-            errorCode === 'HOPPER_EMPTY'
-              ? 'empty'
-              : errorCode === 'HOPPER_JAM'
-                ? 'jam'
-                : COMM_FAILURES.includes(errorCode)
-                  ? 'comm_failure'
-                  : 'unknown_error'
-
-          updateDispenseResult(transactionId, dispenseCode, 0)
+          updateDispenseResult(transactionId, mapDispenseCode(errorCode), 0)
           logError('critical', 'dispense', 'Payment approved but coin not dispensed', {
             transactionId,
             coinSelected,
@@ -333,6 +359,26 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
 
   // Which coins are available (pushed from the fleet server). Default both.
   ipcMain.handle('config:getCoinsEnabled', () => getCoinsEnabled())
+
+  // ---- Combo Sale config (both coins as one product) ----
+  // Resolved config for the renderer + Admin: enabled, ACTIVE price, whether the
+  // kiosk may override, and the two underlying prices.
+  ipcMain.handle('config:getCombo', () => getComboConfig())
+  // Kiosk Admin sets the local combo price override (only honoured if the fleet
+  // permits overrides). Office role only.
+  ipcMain.handle('config:setComboPrice', (_event, cents: number) => {
+    if (!canConfig()) return { ok: false, error: 'Only Office role can change configuration.' }
+    if (!getComboConfig().allowOverride) return { ok: false, error: 'Combo price override is not permitted by the fleet.' }
+    setComboLocalPrice(cents)
+    return { ok: true, combo: getComboConfig() }
+  })
+  // Kiosk Admin turns the combo on/off locally (can only turn it OFF when the
+  // fleet has it ON). Office role only.
+  ipcMain.handle('config:setComboEnabled', (_event, on: boolean) => {
+    if (!canConfig()) return { ok: false, error: 'Only Office role can change configuration.' }
+    setComboEnabledLocal(!!on)
+    return { ok: true, combo: getComboConfig() }
+  })
 
   // Remote coin images (data URLs) downloaded from the fleet server, or null
   // per slot to use the bundled default.

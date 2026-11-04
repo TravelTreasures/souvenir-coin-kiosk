@@ -1,4 +1,14 @@
-export type CoinSelection = 1 | 2
+/** 1 or 2 = an individual coin; 3 = the Combo Sale (one of each coin). */
+export type CoinSelection = 1 | 2 | 3
+
+/** Resolved combo config delivered to the renderer. */
+export interface ComboConfig {
+  enabled: boolean
+  priceCents: number
+  allowOverride: boolean
+  fleetPriceCents: number
+  localPriceCents: number | null
+}
 
 export type Screen =
   | 'home'

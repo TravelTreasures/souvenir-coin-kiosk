@@ -1,16 +1,60 @@
 import { CoinImage } from '../components/CoinImage'
-import type { CoinSelection } from '../types'
+import type { CoinSelection, ComboConfig } from '../types'
 
 interface CoinSelectScreenProps {
   onSelect: (coin: CoinSelection) => void
   onBack: () => void
   priceCents: number
   coinsOn?: { 1: boolean; 2: boolean }
+  combo?: ComboConfig | null
 }
 
-export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: CoinSelectScreenProps) {
+const cardStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 24,
+  padding: '36px 40px 32px',
+  background: 'rgba(255,255,255,0.04)',
+  border: '2px solid rgba(201,162,39,0.25)',
+  borderRadius: 28,
+  cursor: 'pointer',
+  transition: 'transform 0.15s, border-color 0.2s, box-shadow 0.2s',
+  minWidth: 260
+}
+
+function hoverIn(e: React.MouseEvent<HTMLButtonElement>): void {
+  const t = e.currentTarget
+  t.style.borderColor = 'rgba(201,162,39,0.8)'
+  t.style.boxShadow = 'var(--shadow-gold)'
+  t.style.transform = 'translateY(-4px)'
+}
+function hoverOut(e: React.MouseEvent<HTMLButtonElement>): void {
+  const t = e.currentTarget
+  t.style.borderColor = 'rgba(201,162,39,0.25)'
+  t.style.boxShadow = 'none'
+  t.style.transform = 'translateY(0)'
+}
+
+const priceStyle: React.CSSProperties = { fontSize: '1.1rem', color: 'var(--text-gold)' }
+const selectBtnStyle: React.CSSProperties = {
+  marginTop: 8,
+  padding: '10px 36px',
+  borderRadius: 12,
+  background: 'linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dark))',
+  color: '#fff',
+  fontWeight: 700,
+  fontSize: '1rem',
+  letterSpacing: '0.05em'
+}
+
+export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn, combo }: CoinSelectScreenProps) {
   const on = coinsOn ?? { 1: true, 2: true }
-  const coins = ([1, 2] as CoinSelection[]).filter((c) => on[c])
+  const coins = ([1, 2] as CoinSelection[]).filter((c) => on[c as 1 | 2])
+  // The combo needs one of each coin, so it only shows when BOTH coins are
+  // available and the fleet/kiosk has it enabled.
+  const showCombo = !!combo && combo.enabled && on[1] && on[2]
+
   return (
     <div
       className="screen fade-in"
@@ -45,7 +89,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
         <div className="gold-divider" />
       </div>
 
-      {/* Coin cards */}
+      {/* Product cards */}
       <div
         style={{
           display: 'flex',
@@ -53,61 +97,47 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn }: Coin
           alignItems: 'flex-start',
           justifyContent: 'center',
           marginTop: 24,
-          marginBottom: 60
+          marginBottom: 60,
+          flexWrap: 'wrap'
         }}
       >
+        {/* Individual coins */}
         {coins.map((coin) => (
-          <button
-            key={coin}
-            onClick={() => onSelect(coin)}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 24,
-              padding: '36px 40px 32px',
-              background: 'rgba(255,255,255,0.04)',
-              border: '2px solid rgba(201,162,39,0.25)',
-              borderRadius: 28,
-              cursor: 'pointer',
-              transition: 'transform 0.15s, border-color 0.2s, box-shadow 0.2s',
-              minWidth: 260
-            }}
-            onMouseEnter={(e) => {
-              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(201,162,39,0.8)'
-              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-gold)'
-              ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-4px)'
-            }}
-            onMouseLeave={(e) => {
-              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(201,162,39,0.25)'
-              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'
-              ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'
-            }}
-          >
-            <CoinImage coin={coin} size={190} />
-
+          <button key={coin} onClick={() => onSelect(coin)} style={cardStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+            <CoinImage coin={coin as 1 | 2} size={190} />
             <div style={{ textAlign: 'center', marginTop: 28 }}>
-              <p style={{ fontSize: '1.1rem', color: 'var(--text-gold)' }}>
-                R{(priceCents / 100).toFixed(2)}
-              </p>
+              <p style={priceStyle}>R{(priceCents / 100).toFixed(2)}</p>
             </div>
-
-            <div
-              style={{
-                marginTop: 8,
-                padding: '10px 36px',
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dark))',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '1rem',
-                letterSpacing: '0.05em'
-              }}
-            >
-              Select
-            </div>
+            <div style={selectBtnStyle}>Select</div>
           </button>
         ))}
+
+        {/* Combo Sale — one of each coin, at the configured combo price. Same card
+            style, with both coin images shown together and the combo price below. */}
+        {showCombo && combo && (
+          <button onClick={() => onSelect(3)} style={cardStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+            <p
+              style={{
+                color: 'var(--text-gold)',
+                fontSize: '0.85rem',
+                letterSpacing: '0.2em',
+                textTransform: 'uppercase',
+                marginBottom: -8
+              }}
+            >
+              Combo Sale
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
+              <CoinImage coin={1} size={150} style={{ marginRight: -28, zIndex: 2 }} />
+              <CoinImage coin={2} size={150} style={{ marginLeft: -28 }} />
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 28 }}>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: 2 }}>Coin 1 + Coin 2</p>
+              <p style={priceStyle}>R{(combo.priceCents / 100).toFixed(2)}</p>
+            </div>
+            <div style={selectBtnStyle}>Select</div>
+          </button>
+        )}
       </div>
 
       {/* Back */}

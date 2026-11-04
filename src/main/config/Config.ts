@@ -65,6 +65,19 @@ export interface KioskConfig {
    *  hidden on the kiosk so customers can't buy it (e.g. its hopper is empty). */
   coinsEnabled?: { '1': boolean; '2': boolean }
 
+  // ---- Combo Sale (both coins as one product) ----
+  /** Fleet master switch: is the combo offered at all. */
+  comboEnabled?: boolean
+  /** Fleet combo price (cents). Used unless a permitted kiosk override applies. */
+  comboPriceCents?: number
+  /** Fleet permission: may this kiosk set its own combo price. */
+  comboAllowKioskOverride?: boolean
+  /** Kiosk-local combo price override (cents) — only honoured if allowed by fleet. */
+  comboPriceCentsLocal?: number
+  /** Kiosk-local enable flag. Can only turn the combo OFF; it can never force it
+   *  ON when the fleet has it disabled. Undefined = follow the fleet. */
+  comboEnabledLocal?: boolean
+
   // ---- Remote coin images (downloaded from the fleet server) ----
   /** Per-slot coin image as a data URL, applied from the fleet config. */
   coinImages?: { '1'?: string; '2'?: string }
@@ -198,6 +211,42 @@ export function getOperators(): KioskOperator[] {
 export function getCoinsEnabled(): { '1': boolean; '2': boolean } {
   const c = getConfig().coinsEnabled
   return { '1': c ? c['1'] !== false : true, '2': c ? c['2'] !== false : true }
+}
+
+/**
+ * Resolved Combo Sale configuration for this kiosk.
+ *  - enabled:   combo offered now (fleet master ON, and not turned off locally)
+ *  - priceCents: the ACTIVE combo price — a permitted kiosk override wins,
+ *               otherwise the fleet price
+ *  - allowOverride: whether the kiosk is permitted to set its own combo price
+ *  - fleetPriceCents / localPriceCents: the two underlying values (for Admin UI)
+ */
+export function getComboConfig(): {
+  enabled: boolean
+  priceCents: number
+  allowOverride: boolean
+  fleetPriceCents: number
+  localPriceCents: number | null
+} {
+  const c = getConfig()
+  const fleetPrice = typeof c.comboPriceCents === 'number' ? c.comboPriceCents : 0
+  const localPrice = typeof c.comboPriceCentsLocal === 'number' ? c.comboPriceCentsLocal : null
+  const allowOverride = c.comboAllowKioskOverride === true
+  const priceCents = allowOverride && localPrice !== null ? localPrice : fleetPrice
+  const enabled = c.comboEnabled === true && c.comboEnabledLocal !== false
+  return { enabled, priceCents, allowOverride, fleetPriceCents: fleetPrice, localPriceCents: localPrice }
+}
+
+/** Set the kiosk-local combo price override (cents). Only takes effect when the
+ *  fleet permits overrides; otherwise it is stored but ignored by getComboConfig. */
+export function setComboLocalPrice(cents: number): KioskConfig {
+  return updateConfig({ comboPriceCentsLocal: Math.max(0, Math.round(cents)) })
+}
+
+/** Turn the combo on/off locally. Passing true clears the local-off flag (follow
+ *  the fleet); passing false forces it off on this kiosk regardless of fleet. */
+export function setComboEnabledLocal(on: boolean): KioskConfig {
+  return updateConfig({ comboEnabledLocal: on ? undefined : false })
 }
 
 /** Inactivity timeout (seconds) for product selection / payment. Clamped 10–300s. */

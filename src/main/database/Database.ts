@@ -14,7 +14,8 @@ export interface Transaction {
   id?: number
   transactionId: string
   amount: number
-  coinSelected: 1 | 2
+  /** 1 or 2 = individual coin; 3 = Combo Sale (one of each coin). */
+  coinSelected: 1 | 2 | 3
   paymentResult: string
   dispenseResult: DispenseResult | null
   nayaxAuthCode: string | null

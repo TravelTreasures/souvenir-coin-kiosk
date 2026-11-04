@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { Screen, CoinSelection, ErrorState, PaymentResult } from './types'
+import type { Screen, CoinSelection, ErrorState, PaymentResult, ComboConfig } from './types'
 import { HomeScreen } from './screens/HomeScreen'
 import { CoinSelectScreen } from './screens/CoinSelectScreen'
 import { PaymentScreen } from './screens/PaymentScreen'
@@ -54,6 +54,7 @@ export default function App() {
   const [priceCents, setPriceCents] = useState(9000)
   const [txTimeoutSec, setTxTimeoutSec] = useState(45)
   const [coinsOn, setCoinsOn] = useState<{ 1: boolean; 2: boolean }>({ 1: true, 2: true })
+  const [combo, setCombo] = useState<ComboConfig | null>(null)
   const [promo, setPromo] = useState<{ text: string; enabled: boolean } | null>(null)
   const [qr, setQr] = useState<{ enabled: boolean; url: string; caption: string } | null>(null)
   const [marketing, setMarketing] = useState<MarketingConfig | null>(null)
@@ -77,6 +78,7 @@ export default function App() {
       const next = { 1: c['1'] !== false, 2: c['2'] !== false }
       setCoinsOn((prev) => (prev[1] === next[1] && prev[2] === next[2] ? prev : next))
     }).catch(() => {})
+    window.kiosk.getCombo?.().then((c) => setCombo((prev) => (sameJSON(prev, c) ? prev : c))).catch(() => {})
     window.kiosk.getPromo?.().then((p) => setPromo((prev) => (sameJSON(prev, p) ? prev : p))).catch(() => {})
     window.kiosk.getQR?.().then((q) => setQr((prev) => (sameJSON(prev, q) ? prev : q))).catch(() => {})
     window.kiosk.getMarketing?.().then((m) => setMarketing((prev) => (sameJSON(prev, m) ? prev : m))).catch(() => {})
@@ -208,7 +210,7 @@ export default function App() {
   // From the home screen: if only one coin is available, skip selection and go
   // straight to payment for it; if both, show the selection screen.
   const handleHomeTouch = useCallback(() => {
-    const enabled = ([1, 2] as CoinSelection[]).filter((c) => coinsOn[c])
+    const enabled = ([1, 2] as (1 | 2)[]).filter((c) => coinsOn[c])
     paymentAttempt.current = 0 // fresh transaction
     if (enabled.length === 1) {
       setCoinSelected(enabled[0])
@@ -351,7 +353,7 @@ export default function App() {
       )}
 
       {screen === 'coin-select' && (
-        <CoinSelectScreen onSelect={handleCoinSelect} onBack={goHome} priceCents={priceCents} coinsOn={coinsOn} />
+        <CoinSelectScreen onSelect={handleCoinSelect} onBack={goHome} priceCents={priceCents} coinsOn={coinsOn} combo={combo} />
       )}
 
       {screen === 'payment' && (
@@ -359,7 +361,7 @@ export default function App() {
           coinSelected={coinSelected}
           onResult={handlePaymentResult}
           onBack={() => setScreen('coin-select')}
-          priceCents={priceCents}
+          priceCents={coinSelected === 3 && combo ? combo.priceCents : priceCents}
         />
       )}
 

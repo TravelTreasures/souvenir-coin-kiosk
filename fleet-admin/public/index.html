@@ -129,7 +129,7 @@ function logout(){token=null;showLogin()}
 
 function go(v){view=v;render()}
 // Friendly per-kiosk coin name, falling back to "Coin 1/2" when unset.
-function coinName(k,s){return (k&&(s==1?k.coin1Name:k.coin2Name))||('Coin '+s)}
+function coinName(k,s){if(s==3)return 'Combo (Coin 1 + Coin 2)';return (k&&(s==1?k.coin1Name:k.coin2Name))||('Coin '+s)}
 function refresh(){
   if(!token) return;
   // Don't auto-rebuild while the user is editing a field (it would wipe input).
@@ -826,6 +826,18 @@ async function renderKioskTab(id,k,alerts,isAuto){
             ${pendingSched.length?`<div style="margin-top:10px">${pendingSched.map(s=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="muted">${rand(s.priceCents)} on ${esc(s.applyAt.replace('T',' ').substring(0,16))}</span><button class="ghost" style="padding:4px 10px;font-size:.78rem" onclick="cancelSchedule(${s.id})">Cancel</button></div>`).join('')}</div>`:'<div class="muted" style="margin-top:8px;font-size:.8rem">No scheduled changes</div>'}
           </div>`:''}
         </div>
+        <div class="card">
+          <div class="label">Combo Sale (Coin 1 + Coin 2)</div>
+          <div class="muted" style="font-size:.82rem;margin:4px 0 10px">A third selectable product that dispenses one of each coin at a special price.</div>
+          <label class="row" style="gap:8px;margin-bottom:10px"><input type="checkbox" id="comboOn" ${k.comboEnabled?'checked':''} ${admin()?'':'disabled'}/> <span>Offer the Combo Sale on this kiosk</span></label>
+          <div class="row" style="margin-bottom:10px">
+            <span class="dim">Combo price R</span>
+            <input type="number" id="comboPrice" min="0" step="1" style="width:110px" value="${(((k.comboPriceCents??0))/100).toFixed(2)}" ${admin()?'':'disabled'}/>
+          </div>
+          <label class="row" style="gap:8px;margin-bottom:12px"><input type="checkbox" id="comboOverride" ${k.comboAllowKioskOverride?'checked':''} ${admin()?'':'disabled'}/> <span>Allow this kiosk's Admin to override the combo price</span></label>
+          ${admin()?`<button class="ghost" onclick="setCombo('${id}')">Apply Remotely</button> <span id="combomsg" class="ok"></span>`:'<span class="muted">view only</span>'}
+          <div class="muted" style="font-size:.78rem;margin-top:10px">Priority: if kiosk override is allowed and a kiosk price is set, the kiosk price wins; otherwise this fleet price applies.</div>
+        </div>
         ${admin()?`<div class="card">
           <div class="label">Master Admin PIN (kiosk override)</div>
           <p class="muted" style="font-size:.82rem;margin:8px 0"><b>Master key for this kiosk</b> — always unlocks with full <b>Office</b> access, and works even offline or before any operators have synced. Separate from <a onclick="go({name:'operators'})" style="color:var(--gold);cursor:pointer">Operators</a> (per-person PINs). Push a 4–8 digit PIN to set/rotate it; it's a <b>one-time set</b> (kept until you push again, not re-applied on other syncs). Leave blank to keep the kiosk's local PIN. ${k.adminPin?'<b style="color:var(--green)">● Master PIN last pushed from here</b>':'<span class="muted">○ No master PIN pushed — kiosk uses its local PIN</span>'}</p>
@@ -1005,6 +1017,7 @@ async function setStatus(id){const v=document.getElementById('opstat').value;awa
 async function setDest(id){const v=document.getElementById('kdest').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({destinationId:v})});document.getElementById('kmetamsg').textContent='Destination saved';setTimeout(()=>render(),600)}
 async function setTags(id){const v=document.getElementById('ktags').value.split(',').map(s=>s.trim()).filter(Boolean);await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({tags:v})});document.getElementById('kmetamsg').textContent='Tags saved';setTimeout(()=>render(),600)}
 async function setCoinNames(id){const coin1Name=document.getElementById('cn1').value,coin2Name=document.getElementById('cn2').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({coin1Name,coin2Name})});document.getElementById('cnmsg').textContent='Saved';setTimeout(()=>render(),600)}
+async function setCombo(id){const comboEnabled=document.getElementById('comboOn').checked,comboAllowKioskOverride=document.getElementById('comboOverride').checked,comboPriceCents=Math.max(0,Math.round(parseFloat(document.getElementById('comboPrice').value||'0')*100));await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({comboEnabled,comboPriceCents,comboAllowKioskOverride})});document.getElementById('combomsg').textContent='Saved — applies on next kiosk sync';setTimeout(()=>render(),800)}
 async function schedulePrice(id){
   const p=parseFloat(document.getElementById('schprice').value),w=document.getElementById('schwhen').value;
   if(!isFinite(p)||p<0){document.getElementById('schmsg').textContent='Enter a price';return}

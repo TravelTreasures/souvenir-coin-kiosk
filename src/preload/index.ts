@@ -6,8 +6,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const kioskAPI = {
-  // Payment
-  requestPayment: (coinSelected: 1 | 2) =>
+  // Payment (coinSelected: 1 | 2 = individual coin, 3 = Combo Sale)
+  requestPayment: (coinSelected: 1 | 2 | 3) =>
     ipcRenderer.invoke('payment:request', coinSelected),
   cancelPayment: () => ipcRenderer.invoke('payment:cancel'),
   abandonTransaction: (reason?: string) => ipcRenderer.invoke('payment:abandon', reason),
@@ -58,6 +58,14 @@ const kioskAPI = {
     ipcRenderer.invoke('config:getCoinImages'),
   getCoinsEnabled: (): Promise<{ '1': boolean; '2': boolean }> =>
     ipcRenderer.invoke('config:getCoinsEnabled'),
+
+  // Combo Sale (both coins as one product)
+  getCombo: (): Promise<{ enabled: boolean; priceCents: number; allowOverride: boolean; fleetPriceCents: number; localPriceCents: number | null }> =>
+    ipcRenderer.invoke('config:getCombo'),
+  setComboPrice: (cents: number): Promise<{ ok: boolean; error?: string; combo?: { enabled: boolean; priceCents: number; allowOverride: boolean; fleetPriceCents: number; localPriceCents: number | null } }> =>
+    ipcRenderer.invoke('config:setComboPrice', cents),
+  setComboEnabled: (on: boolean): Promise<{ ok: boolean; error?: string; combo?: { enabled: boolean; priceCents: number; allowOverride: boolean; fleetPriceCents: number; localPriceCents: number | null } }> =>
+    ipcRenderer.invoke('config:setComboEnabled', on),
   getPromo: (): Promise<{ text: string; enabled: boolean }> =>
     ipcRenderer.invoke('config:getPromo'),
   getQR: (): Promise<{ enabled: boolean; url: string; caption: string }> =>

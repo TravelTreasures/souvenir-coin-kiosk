@@ -110,7 +110,12 @@ function fireWebhook(alert) {
 /** Open a system alert if one of this type isn't already open for the kiosk. */
 function raiseAlert(kioskId, type, message) {
   const open = data().systemAlerts.find((a) => a.kioskId === kioskId && a.type === type && !a.resolved)
-  if (open) return
+  if (open) {
+    // Already open — keep its detail current (e.g. the live coin count) so it
+    // doesn't show a stale number. Don't re-fire the webhook for an update.
+    if (open.message !== message) open.message = message
+    return
+  }
   const alert = { id: nextId('systemAlerts'), kioskId, type, message, createdAt: new Date().toISOString(), resolved: false }
   data().systemAlerts.push(alert)
   fireWebhook(alert)
@@ -191,7 +196,12 @@ function periodBounds(period) {
   if (period === 'today') { const s = new Date(now); s.setHours(0, 0, 0, 0); from = fmt(s) }
   else if (period === 'week') { const s = new Date(now); s.setDate(s.getDate() - 7); from = fmt(s) }
   else if (period === 'month') { const s = new Date(now); s.setMonth(s.getMonth() - 1); from = fmt(s) }
-  return { from, to: fmt(now) }
+  // Upper bound = END of today, not "now". Kiosks timestamp events in their own
+  // local time (e.g. UTC+2), while this server may run in UTC; using "now" would
+  // drop events whose local timestamp reads later than the server's UTC clock
+  // (a 17:11 refill vs a 15:11 UTC now). End-of-day tolerates that skew.
+  const endOfToday = new Date(now); endOfToday.setHours(23, 59, 59, 0)
+  return { from, to: fmt(endOfToday) }
 }
 const norm = (ts) => (ts || '').replace('T', ' ').substring(0, 19)
 
@@ -206,13 +216,17 @@ function salesBetween(kioskId, from, to) {
     (t) => t.kioskId === kioskId && t.paymentResult === 'approved' && t.dispenseResult === 'success' &&
       norm(t.createdAt) >= from && norm(t.createdAt) <= to
   )
+  // coinSelected 3 = Combo Sale (one of each coin). totals already include it;
+  // it's broken out separately below so per-coin figures aren't skewed.
   return {
     totalSales: rows.length,
     totalRevenue: rows.reduce((a, r) => a + r.amount, 0),
     coin1Sales: rows.filter((r) => r.coinSelected === 1).length,
     coin2Sales: rows.filter((r) => r.coinSelected === 2).length,
     coin1Revenue: rows.filter((r) => r.coinSelected === 1).reduce((a, r) => a + r.amount, 0),
-    coin2Revenue: rows.filter((r) => r.coinSelected === 2).reduce((a, r) => a + r.amount, 0)
+    coin2Revenue: rows.filter((r) => r.coinSelected === 2).reduce((a, r) => a + r.amount, 0),
+    comboSales: rows.filter((r) => r.coinSelected === 3).length,
+    comboRevenue: rows.filter((r) => r.coinSelected === 3).reduce((a, r) => a + r.amount, 0)
   }
 }
 
@@ -269,7 +283,9 @@ function hopperInventory(kiosk) {
     const current = hop ? hop.coinCount : null
     let dispensed = 0
     for (const t of data().transactions) {
-      if (t.kioskId !== kiosk.id || t.coinSelected !== slot) continue
+      if (t.kioskId !== kiosk.id) continue
+      // A combo (coinSelected 3) dispenses one of EACH coin, so it depletes both slots.
+      if (t.coinSelected !== slot && t.coinSelected !== 3) continue
       if (t.paymentResult === 'approved' && t.dispenseResult === 'success' && norm(t.createdAt).substring(0, 10) >= startKey) dispensed++
     }
     const avgDailyUse = dispensed / days
@@ -325,6 +341,9 @@ function kioskSummary(k) {
     salesToday: salesFor(k.id, 'today').totalSales,
     openAlerts,
     coinPriceCents: k.coinPriceCents ?? 9000,
+    comboEnabled: k.comboEnabled === true,
+    comboPriceCents: typeof k.comboPriceCents === 'number' ? k.comboPriceCents : 0,
+    comboAllowKioskOverride: k.comboAllowKioskOverride === true,
     configVersion: k.configVersion ?? 1,
     appliedConfigVersion: k.appliedConfigVersion ?? 0,
     synced: (k.configVersion ?? 1) === (k.appliedConfigVersion ?? 0),
@@ -501,6 +520,12 @@ const server = createServer(async (req, res) => {
           adminPin: kiosk.adminPin || '',
           adminPinVersion: kiosk.adminPinVersion ?? 0,
           coins: { '1': kiosk.coin1Enabled !== false, '2': kiosk.coin2Enabled !== false },
+          // Combo Sale: fleet enable + fleet price + whether this kiosk may override.
+          combo: {
+            enabled: kiosk.comboEnabled === true,
+            priceCents: typeof kiosk.comboPriceCents === 'number' ? kiosk.comboPriceCents : 0,
+            allowOverride: kiosk.comboAllowKioskOverride === true
+          },
           operators: data().operators.map((o) => ({ id: o.id, name: o.name, pin: o.pin, role: o.role })),
           // OTA policy: feed, approved target version, and the install window.
           ota: (() => {
@@ -662,6 +687,9 @@ const server = createServer(async (req, res) => {
         apiKey: 'kk_' + randomBytes(16).toString('hex'),
         operationalStatus: 'active', appVersion: '-', createdAt: new Date().toISOString(),
         coinPriceCents: typeof b.coinPriceCents === 'number' ? b.coinPriceCents : 9000,
+        comboEnabled: false,
+        comboPriceCents: typeof b.comboPriceCents === 'number' ? b.comboPriceCents : 15000, // R150 default
+        comboAllowKioskOverride: false,
         configVersion: 1, appliedConfigVersion: 0
       }
       data().kiosks.push(kiosk)
@@ -1012,6 +1040,20 @@ const server = createServer(async (req, res) => {
           kiosk.coinPriceCents = Math.max(0, Math.round(b.coinPriceCents))
           kiosk.configVersion = (kiosk.configVersion ?? 1) + 1
           kiosk.lastConfigUpdate = new Date().toISOString()
+        }
+        // Combo Sale — fleet-level enable, price, and whether kiosks may override.
+        // Any change bumps config so it distributes to the kiosk.
+        if (typeof b.comboEnabled === 'boolean' && b.comboEnabled !== (kiosk.comboEnabled === true)) {
+          kiosk.comboEnabled = b.comboEnabled
+          bumpConfig(kiosk)
+        }
+        if (typeof b.comboPriceCents === 'number' && Math.round(b.comboPriceCents) !== (kiosk.comboPriceCents ?? 0)) {
+          kiosk.comboPriceCents = Math.max(0, Math.round(b.comboPriceCents))
+          bumpConfig(kiosk)
+        }
+        if (typeof b.comboAllowKioskOverride === 'boolean' && b.comboAllowKioskOverride !== (kiosk.comboAllowKioskOverride === true)) {
+          kiosk.comboAllowKioskOverride = b.comboAllowKioskOverride
+          bumpConfig(kiosk)
         }
         // Per-coin availability — enable/disable each coin remotely (e.g. when a
         // hopper is out of stock). Bumps config so the kiosk hides/shows it.
