@@ -135,7 +135,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn, combo 
                 marginBottom: -8
               }}
             >
-              Combo Sale
+              Combo
             </p>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
               <CoinImage coin={1} size={140} style={{ marginRight: -26, zIndex: 2 }} />

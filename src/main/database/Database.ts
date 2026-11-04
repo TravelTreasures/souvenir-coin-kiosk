@@ -212,6 +212,35 @@ export function getTransactionsSince(sinceId: number, limit = 500): Transaction[
     .all(sinceId, limit) as Transaction[]
 }
 
+/**
+ * Retention: delete local transaction rows that have ALREADY been synced to the
+ * fleet (id <= maxSyncedId) AND are older than `olderThanDays`. Keeps the
+ * on-device database from growing without bound — the fleet server keeps the
+ * full history for reporting. Returns the number of rows removed. Does nothing
+ * when nothing has synced yet (maxSyncedId <= 0), so unsynced records are never
+ * lost even if the kiosk is offline from the fleet for a long time.
+ */
+export function pruneSyncedTransactions(maxSyncedId: number, olderThanDays = 60): number {
+  const db = getDB()
+  if (!db || !(maxSyncedId > 0)) return 0
+  const cutoff = `-${Math.max(1, Math.round(olderThanDays))} days`
+  const info = db
+    .prepare(`DELETE FROM transactions WHERE id <= ? AND created_at < datetime('now','localtime',?)`)
+    .run(maxSyncedId, cutoff)
+  return info.changes as number
+}
+
+/** Same retention policy for synced hopper events. */
+export function pruneSyncedHopperEvents(maxSyncedId: number, olderThanDays = 60): number {
+  const db = getDB()
+  if (!db || !(maxSyncedId > 0)) return 0
+  const cutoff = `-${Math.max(1, Math.round(olderThanDays))} days`
+  const info = db
+    .prepare(`DELETE FROM hopper_events WHERE id <= ? AND created_at < datetime('now','localtime',?)`)
+    .run(maxSyncedId, cutoff)
+  return info.changes as number
+}
+
 // ------------------------------------------------------------------
 // Sales Reports
 // ------------------------------------------------------------------

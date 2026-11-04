@@ -15,10 +15,23 @@
 import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { getConfig, updateConfig, setPriceCents } from '../config/Config'
-import { getTransactionsSince, getHopperEventsSince } from '../database/Database'
+import { getTransactionsSince, getHopperEventsSince, pruneSyncedTransactions, pruneSyncedHopperEvents } from '../database/Database'
 import { HopperController } from '../hopper/HopperController'
 import type { NayaxController } from '../nayax/NayaxController'
 import { runUpdateTick, getUpdateReport } from '../update/UpdateController'
+
+// Local-retention bookkeeping: prune at most once a day.
+const RETENTION_DAYS = 60
+let lastPruneAt = 0
+function maybePruneSynced(): void {
+  const now = Date.now()
+  if (now - lastPruneAt < 24 * 60 * 60 * 1000) return
+  lastPruneAt = now
+  const cfg = getConfig()
+  const tx = pruneSyncedTransactions(cfg.lastSyncedTxId ?? 0, RETENTION_DAYS)
+  const ev = pruneSyncedHopperEvents(cfg.lastSyncedHopperEventId ?? 0, RETENTION_DAYS)
+  if (tx || ev) console.log(`[fleet-sync] retention: removed ${tx} transaction(s) + ${ev} hopper event(s) older than ${RETENTION_DAYS} days (already synced)`)
+}
 
 // OTA is disabled in dev / hardware-simulation builds.
 const OTA_DEV = is.dev || process.env.SIMULATE_HARDWARE === 'true'
@@ -262,6 +275,10 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         }
       }
     }
+    // Retention: once a day, delete local rows already synced to the fleet AND
+    // older than 60 days, so the on-device database never grows without bound.
+    // The fleet server keeps the full history for reporting.
+    maybePruneSynced()
   } catch {
     /* offline — retry next tick */
   }
