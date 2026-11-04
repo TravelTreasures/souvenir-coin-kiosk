@@ -89,31 +89,41 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn, combo 
         <div className="gold-divider" />
       </div>
 
-      {/* Product cards */}
+      {/* Product cards: the two individual coins on top, and the Combo Sale
+          centred directly underneath them. Pulled up to sit just under the heading. */}
       <div
         style={{
           display: 'flex',
-          gap: 48,
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          marginTop: 24,
-          marginBottom: 60,
-          flexWrap: 'wrap'
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 28,
+          marginTop: -110,
+          marginBottom: 40
         }}
       >
-        {/* Individual coins */}
-        {coins.map((coin) => (
-          <button key={coin} onClick={() => onSelect(coin)} style={cardStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
-            <CoinImage coin={coin as 1 | 2} size={190} />
-            <div style={{ textAlign: 'center', marginTop: 28 }}>
-              <p style={priceStyle}>R{(priceCents / 100).toFixed(2)}</p>
-            </div>
-            <div style={selectBtnStyle}>Select</div>
-          </button>
-        ))}
+        {/* Top row — individual coins */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 48,
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}
+        >
+          {coins.map((coin) => (
+            <button key={coin} onClick={() => onSelect(coin)} style={cardStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+              <CoinImage coin={coin as 1 | 2} size={170} />
+              <div style={{ textAlign: 'center', marginTop: 28 }}>
+                <p style={priceStyle}>R{(priceCents / 100).toFixed(2)}</p>
+              </div>
+              <div style={selectBtnStyle}>Select</div>
+            </button>
+          ))}
+        </div>
 
-        {/* Combo Sale — one of each coin, at the configured combo price. Same card
-            style, with both coin images shown together and the combo price below. */}
+        {/* Combo Sale — one of each coin, at the configured combo price. Centred
+            below the two individual coins, same card style with both images. */}
         {showCombo && combo && (
           <button onClick={() => onSelect(3)} style={cardStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
             <p
@@ -128,10 +138,10 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn, combo 
               Combo Sale
             </p>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
-              <CoinImage coin={1} size={150} style={{ marginRight: -28, zIndex: 2 }} />
-              <CoinImage coin={2} size={150} style={{ marginLeft: -28 }} />
+              <CoinImage coin={1} size={140} style={{ marginRight: -26, zIndex: 2 }} />
+              <CoinImage coin={2} size={140} style={{ marginLeft: -26 }} />
             </div>
-            <div style={{ textAlign: 'center', marginTop: 28 }}>
+            <div style={{ textAlign: 'center', marginTop: 24 }}>
               <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: 2 }}>Coin 1 + Coin 2</p>
               <p style={priceStyle}>R{(combo.priceCents / 100).toFixed(2)}</p>
             </div>
