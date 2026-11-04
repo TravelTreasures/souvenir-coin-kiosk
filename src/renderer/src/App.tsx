@@ -55,6 +55,7 @@ export default function App() {
   const [txTimeoutSec, setTxTimeoutSec] = useState(45)
   const [coinsOn, setCoinsOn] = useState<{ 1: boolean; 2: boolean }>({ 1: true, 2: true })
   const [combo, setCombo] = useState<ComboConfig | null>(null)
+  const [opStatus, setOpStatus] = useState('active')
   const [promo, setPromo] = useState<{ text: string; enabled: boolean } | null>(null)
   const [qr, setQr] = useState<{ enabled: boolean; url: string; caption: string } | null>(null)
   const [marketing, setMarketing] = useState<MarketingConfig | null>(null)
@@ -79,6 +80,7 @@ export default function App() {
       setCoinsOn((prev) => (prev[1] === next[1] && prev[2] === next[2] ? prev : next))
     }).catch(() => {})
     window.kiosk.getCombo?.().then((c) => setCombo((prev) => (sameJSON(prev, c) ? prev : c))).catch(() => {})
+    window.kiosk.getOperationalStatus?.().then((s) => setOpStatus(s || 'active')).catch(() => {})
     window.kiosk.getPromo?.().then((p) => setPromo((prev) => (sameJSON(prev, p) ? prev : p))).catch(() => {})
     window.kiosk.getQR?.().then((q) => setQr((prev) => (sameJSON(prev, q) ? prev : q))).catch(() => {})
     window.kiosk.getMarketing?.().then((m) => setMarketing((prev) => (sameJSON(prev, m) ? prev : m))).catch(() => {})
@@ -333,11 +335,21 @@ export default function App() {
     setError(null)
   }, [error, goHome])
 
+  // Fleet "maintenance" / "out of service" takes the kiosk offline to customers.
+  const serving = opStatus === 'active'
+
+  // When the kiosk goes offline mid-flow, drop any customer screen back to a safe
+  // state so it doesn't resume a stale payment when it comes back. Admin stays put.
+  useEffect(() => {
+    if (!serving) setScreen((s) => (s === 'admin' ? s : 'home'))
+  }, [serving])
+
   // ── Render ──────────────────────────────────────────────────────
   return (
     <>
-      {/* Invisible admin tap zone – top-right 80×80 px */}
-      {screen === 'home' && (
+      {/* Invisible admin tap zone – top-right 80×80 px (also while offline, so
+          staff can reach Admin to bring it back). */}
+      {(screen === 'home' || !serving) && screen !== 'admin' && (
         <div
           onClick={handleAdminTap}
           style={{
@@ -348,7 +360,38 @@ export default function App() {
         />
       )}
 
-      {screen === 'home' && (
+      {/* Out of service / maintenance — customer-facing unavailable screen. */}
+      {!serving && screen !== 'admin' && (
+        <div
+          className="screen fade-in"
+          style={{
+            background: 'radial-gradient(ellipse at center, #1a140a 0%, var(--bg-dark) 75%)',
+            padding: '60px 40px',
+            gap: 0,
+            textAlign: 'center'
+          }}
+        >
+          <div style={{ fontSize: '4.5rem', marginBottom: 24 }}>🛠️</div>
+          <h1
+            style={{
+              fontFamily: 'var(--font-heading)',
+              fontSize: 'clamp(2.2rem, 5vw, 3.4rem)',
+              color: 'var(--text-white)',
+              marginBottom: 16
+            }}
+          >
+            Temporarily Unavailable
+          </h1>
+          <div className="gold-divider" style={{ marginBottom: 24 }} />
+          <p style={{ color: 'var(--text-dim)', fontSize: 'clamp(1.1rem, 3vw, 1.5rem)', maxWidth: 520, lineHeight: 1.5 }}>
+            This kiosk is currently under maintenance.
+            <br />
+            Please check back shortly.
+          </p>
+        </div>
+      )}
+
+      {screen === 'home' && serving && (
         <HomeScreen onTouch={handleHomeTouch} priceCents={priceCents} promo={promo} qr={qr} coinsOn={coinsOn} />
       )}
 

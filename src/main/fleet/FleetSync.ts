@@ -187,6 +187,11 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         if (conf.coins) {
           updateConfig({ coinsEnabled: { '1': conf.coins['1'] !== false, '2': conf.coins['2'] !== false } })
         }
+        // Operational status: 'active' serves customers; anything else takes the
+        // kiosk offline (unavailable screen) until the fleet sets it back.
+        if (typeof conf.operationalStatus === 'string') {
+          updateConfig({ operationalStatus: conf.operationalStatus })
+        }
         // Combo Sale: apply the fleet enable, fleet price and override permission.
         // The kiosk's LOCAL override price (comboPriceCentsLocal) is untouched here.
         if (conf.combo) {

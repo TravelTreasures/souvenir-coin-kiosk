@@ -65,6 +65,11 @@ export interface KioskConfig {
    *  hidden on the kiosk so customers can't buy it (e.g. its hopper is empty). */
   coinsEnabled?: { '1': boolean; '2': boolean }
 
+  /** Operational status pushed from the fleet server: 'active' = normal, anything
+   *  else ('maintenance' | 'out_of_service') takes the kiosk offline to customers
+   *  (an "unavailable" screen; Admin still reachable). */
+  operationalStatus?: string
+
   // ---- Combo Sale (both coins as one product) ----
   /** Fleet master switch: is the combo offered at all. */
   comboEnabled?: boolean
@@ -205,6 +210,13 @@ export function setPriceCents(cents: number): KioskConfig {
 export function getOperators(): KioskOperator[] {
   const ops = getConfig().operators
   return Array.isArray(ops) ? ops : []
+}
+
+/** Fleet operational status: 'active' (default) means the kiosk serves customers;
+ *  'maintenance' / 'out_of_service' take it offline (unavailable screen). */
+export function getOperationalStatus(): string {
+  const s = getConfig().operationalStatus
+  return typeof s === 'string' && s ? s : 'active'
 }
 
 /** Which coins are currently available (default both). */

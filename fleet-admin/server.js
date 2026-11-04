@@ -1026,7 +1026,10 @@ const server = createServer(async (req, res) => {
 
       if (req.method === 'PATCH' && !sub) {
         const b = await body(req)
-        if (b.operationalStatus) kiosk.operationalStatus = b.operationalStatus
+        if (b.operationalStatus && b.operationalStatus !== kiosk.operationalStatus) {
+          kiosk.operationalStatus = b.operationalStatus
+          bumpConfig(kiosk) // distribute so the kiosk goes offline / back online
+        }
         if (b.name) kiosk.name = b.name
         if (b.location !== undefined) kiosk.location = b.location
         if (b.destinationId) kiosk.destinationId = b.destinationId

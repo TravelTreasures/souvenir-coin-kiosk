@@ -138,7 +138,7 @@ function refresh(){
   // Skip views with charts, file pickers, or editing forms to avoid flicker /
   // losing a selected file or half-filled form (these config screens don't need
   // an 8-second live refresh).
-  if(view.name==='global' || view.name==='images' || view.name==='users' || view.name==='operators' || view.name==='destinations' || view.name==='pricing' || view.name==='updates' || (view.name==='kiosk' && ['sales','transactions','marketing','inventory'].includes(kioskTab))) return;
+  if(view.name==='global' || view.name==='images' || view.name==='users' || view.name==='operators' || view.name==='destinations' || view.name==='pricing' || view.name==='updates' || (view.name==='kiosk' && ['overview','sales','transactions','marketing','inventory'].includes(kioskTab))) return;
   // Preserve the scroll position across the rebuild so an auto-refresh doesn't
   // jump the page back to the top while the user is reading further down.
   const y=window.scrollY;

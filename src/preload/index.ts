@@ -58,6 +58,8 @@ const kioskAPI = {
     ipcRenderer.invoke('config:getCoinImages'),
   getCoinsEnabled: (): Promise<{ '1': boolean; '2': boolean }> =>
     ipcRenderer.invoke('config:getCoinsEnabled'),
+  getOperationalStatus: (): Promise<string> =>
+    ipcRenderer.invoke('config:getOperationalStatus'),
 
   // Combo Sale (both coins as one product)
   getCombo: (): Promise<{ enabled: boolean; priceCents: number; allowOverride: boolean; fleetPriceCents: number; localPriceCents: number | null }> =>

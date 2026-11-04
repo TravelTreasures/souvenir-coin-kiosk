@@ -23,7 +23,7 @@ import {
   getUnresolvedAlerts,
   resolveAlert
 } from './database/Database'
-import { getPriceCents, setPriceCents, getConfig, updateConfig, getAdminPin, verifyAdminPin, changeAdminPin, getTransactionTimeoutSeconds, setTransactionTimeoutSeconds, getCoinsEnabled, getOperators, getComboConfig, setComboLocalPrice, setComboEnabledLocal } from './config/Config'
+import { getPriceCents, setPriceCents, getConfig, updateConfig, getAdminPin, verifyAdminPin, changeAdminPin, getTransactionTimeoutSeconds, setTransactionTimeoutSeconds, getCoinsEnabled, getOperationalStatus, getOperators, getComboConfig, setComboLocalPrice, setComboEnabledLocal } from './config/Config'
 import type { OperatorRole } from './config/Config'
 import { startFleetSync, stopFleetSync } from './fleet/FleetSync'
 import { v4 as uuidv4 } from 'uuid'
@@ -359,6 +359,10 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
 
   // Which coins are available (pushed from the fleet server). Default both.
   ipcMain.handle('config:getCoinsEnabled', () => getCoinsEnabled())
+
+  // Fleet operational status: 'active' = serving; otherwise the kiosk shows an
+  // "unavailable" screen to customers (maintenance / out of service).
+  ipcMain.handle('config:getOperationalStatus', () => getOperationalStatus())
 
   // ---- Combo Sale config (both coins as one product) ----
   // Resolved config for the renderer + Admin: enabled, ACTIVE price, whether the
