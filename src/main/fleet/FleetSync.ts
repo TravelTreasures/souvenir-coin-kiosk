@@ -39,16 +39,16 @@ const OTA_DEV = is.dev || process.env.SIMULATE_HARDWARE === 'true'
 /**
  * How often the kiosk syncs with the Fleet Admin server.
  *
- * Default 60s — small enough that price / coin / PIN / image changes and offline
- * detection stay responsive, large enough that server load stays trivial even
- * for a large fleet (100 kiosks ≈ a couple of requests per second).
+ * Default 20s — small enough that price / coin / PIN / image changes and offline
+ * detection feel near-immediate, large enough that server load stays trivial even
+ * for a large fleet (100 kiosks ≈ a few requests per second).
  *
  * Tunable per-deployment WITHOUT rebuilding the app: set the FLEET_SYNC_SECONDS
  * env var (e.g. in the kiosk's autostart), or a `fleetSyncSeconds` value in the
  * kiosk config. Clamped to 15s–1h so a typo can neither hammer the server nor
  * effectively disable sync.
  */
-const DEFAULT_SYNC_SECONDS = 60
+const DEFAULT_SYNC_SECONDS = 20
 const MIN_SYNC_SECONDS = 15
 const MAX_SYNC_SECONDS = 3600
 

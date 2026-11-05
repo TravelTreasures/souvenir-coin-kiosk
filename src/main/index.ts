@@ -116,7 +116,11 @@ function createMainWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      contextIsolation: true
+      contextIsolation: true,
+      // Keep renderer timers (config re-poll, coin-image refresh, marketing) running
+      // at full rate while the kiosk sits idle. Without this, Chromium throttles an
+      // un-interacted window's timers, so fleet changes only appeared after a touch.
+      backgroundThrottling: false
     },
     backgroundColor: '#0a1628'
   })

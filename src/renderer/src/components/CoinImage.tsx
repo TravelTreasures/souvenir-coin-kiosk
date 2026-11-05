@@ -6,7 +6,7 @@
  *   2. the bundled default in src/renderer/src/assets/coin1.png / coin2.png.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import coin1Img from '../assets/coin1.png'
 import coin2Img from '../assets/coin2.png'
 
@@ -24,15 +24,32 @@ const COIN_IMAGES: Record<1 | 2, string> = { 1: coin1Img, 2: coin2Img }
 export function CoinImage({ coin, size = 220, label, className = '', style }: CoinImageProps) {
   const [imgError, setImgError] = useState(false)
   const [remoteSrc, setRemoteSrc] = useState<string | null>(null)
+  const lastRef = useRef<string | null>(null)
 
-  // Pick up a fleet-pushed image for this coin, if one has been downloaded.
+  // Pick up a fleet-pushed image for this coin. Poll so a coin-image change made
+  // from Fleet Admin appears live (the kiosk sits on these screens without
+  // remounting), the same way a remote price change takes effect without restart.
   useEffect(() => {
     let active = true
-    window.kiosk?.getCoinImages?.().then((imgs) => {
-      if (active) setRemoteSrc(imgs?.[coin] ?? null)
-    }).catch(() => {})
+    const load = async (): Promise<void> => {
+      try {
+        const imgs = await window.kiosk?.getCoinImages?.()
+        if (!active) return
+        const next = imgs?.[coin] ?? null
+        if (next !== lastRef.current) {
+          lastRef.current = next
+          setRemoteSrc(next)
+          setImgError(false) // give the newly-swapped image a fresh chance to load
+        }
+      } catch {
+        /* keep showing whatever we have */
+      }
+    }
+    load()
+    const t = setInterval(load, 5000)
     return () => {
       active = false
+      clearInterval(t)
     }
   }, [coin])
 

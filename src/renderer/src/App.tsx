@@ -89,7 +89,7 @@ export default function App() {
     refreshPrice()
     // Re-poll config periodically so fleet changes (price, marketing, promo)
     // take effect while the kiosk sits idle, without a restart or navigation.
-    const t = setInterval(refreshPrice, 20_000)
+    const t = setInterval(refreshPrice, 8_000)
     return () => clearInterval(t)
   }, [refreshPrice])
 

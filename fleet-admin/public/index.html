@@ -83,27 +83,27 @@
 <div id="login" class="login">
   <div class="brand" style="font-size:1.5rem">Fleet Admin</div>
   <p class="muted" style="margin:6px 0 4px">Souvenir Coin Kiosk — Central Dashboard</p>
-  <div id="staffbox">
+  <form id="staffbox" onsubmit="login();return false">
     <div class="label" style="margin-bottom:8px;text-align:center">Staff sign-in</div>
-    <input type="text" id="user" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('pw').focus()"/>
-    <input type="password" id="pw" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"/>
+    <input type="text" id="user" placeholder="Username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"/>
+    <input type="password" id="pw" placeholder="Password" autocomplete="current-password"/>
     <div id="lerr" class="err" style="min-height:20px"></div>
-    <button class="btn" style="width:100%" onclick="login()">Sign In</button>
+    <button class="btn" type="submit" style="width:100%">Sign In</button>
     <p class="muted" style="margin-top:14px;text-align:center"><a style="cursor:pointer;color:var(--gold-l)" onclick="loginMode('op')">Operator sign-in (refills)</a></p>
-  </div>
-  <div id="opbox" class="hide">
+  </form>
+  <form id="opbox" class="hide" autocomplete="off" onsubmit="operatorLogin();return false">
     <div class="label" style="margin-bottom:8px;text-align:center;color:var(--gold-l)">Operator sign-in — refills only</div>
-    <input type="text" id="opname" placeholder="Operator name (e.g. Operator 1)" autocomplete="off" onkeydown="if(event.key==='Enter')document.getElementById('oppin').focus()"/>
-    <input type="password" id="oppin" inputmode="numeric" placeholder="PIN" autocomplete="off" onkeydown="if(event.key==='Enter')operatorLogin()"/>
+    <input type="text" id="opname" placeholder="Operator name (e.g. Operator 1)" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"/>
+    <input type="text" id="oppin" inputmode="numeric" placeholder="PIN" autocomplete="off" style="-webkit-text-security:disc;text-security:disc"/>
     <div id="operr" class="err" style="min-height:20px"></div>
-    <button class="btn" style="width:100%" onclick="operatorLogin()">Sign In</button>
+    <button class="btn" type="submit" style="width:100%">Sign In</button>
     <p class="muted" style="margin-top:14px;text-align:center"><a style="cursor:pointer;color:var(--gold-l)" onclick="loginMode('staff')">← Staff sign-in</a></p>
-  </div>
+  </form>
 </div>
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.10</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.12</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -117,7 +117,13 @@
 let token=null, view={name:'fleet'}, timer=null, me=null;
 const admin=()=>me&&me.role==='admin';
 const isOperator=()=>me&&me.role==='operator';
-function loginMode(m){document.getElementById('staffbox').classList.toggle('hide',m==='op');document.getElementById('opbox').classList.toggle('hide',m!=='op');}
+function loginMode(m){
+  document.getElementById('staffbox').classList.toggle('hide',m==='op');
+  document.getElementById('opbox').classList.toggle('hide',m!=='op');
+  // Only clear the error text — do NOT wipe field values here, so the browser's
+  // autofilled staff password survives a trip to the operator form and back.
+  ['lerr','operr'].forEach(i=>{const e=document.getElementById(i);if(e)e.textContent='';});
+}
 async function operatorLogin(){
   document.getElementById('operr').textContent='';
   const name=document.getElementById('opname').value.trim();
