@@ -178,6 +178,17 @@ function wireEvents(u: AutoUpdaterLike): void {
     pendingInstall = false
     forcedInstall = false
     const msg = err instanceof Error ? err.message : String(err)
+    // A 404 for the channel file (e.g. stable-linux.yml) just means the newest
+    // release is still being published — its assets aren't uploaded yet — or a
+    // momentary network blip. The updater retries on the next check, so this is
+    // NOT a real failure: report a calm idle state instead of a red "failed"
+    // with a stack trace, so an in-progress publish doesn't look like breakage.
+    const transient = /HttpError:\s*404|Cannot find channel|update info|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|socket hang up|network/i.test(msg)
+    if (transient) {
+      console.log('[ota] update check deferred — release not ready or transient:', msg.split('\n')[0])
+      setOtaStatus('idle')
+      return
+    }
     console.log('[ota] updater error:', msg)
     setOtaStatus('failed', msg)
   })
