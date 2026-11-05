@@ -113,7 +113,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn, combo 
         >
           {coins.map((coin) => (
             <button key={coin} onClick={() => onSelect(coin)} style={cardStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
-              <CoinImage coin={coin as 1 | 2} size={170} />
+              <CoinImage coin={coin as 1 | 2} size={200} />
               <div style={{ textAlign: 'center', marginTop: 28 }}>
                 <p style={priceStyle}>R{(priceCents / 100).toFixed(2)}</p>
               </div>
@@ -138,8 +138,8 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn, combo 
               Combo
             </p>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
-              <CoinImage coin={1} size={140} style={{ marginRight: -26, zIndex: 2 }} />
-              <CoinImage coin={2} size={140} style={{ marginLeft: -26 }} />
+              <CoinImage coin={1} size={165} style={{ marginRight: -30, zIndex: 2 }} />
+              <CoinImage coin={2} size={165} style={{ marginLeft: -30 }} />
             </div>
             <div style={{ textAlign: 'center', marginTop: 24 }}>
               <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: 2 }}>Coin 1 + Coin 2</p>
