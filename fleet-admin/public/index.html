@@ -103,7 +103,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.12</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.13</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -164,8 +164,23 @@ function logout(){token=null;showLogin()}
 function go(v){view=v;render()}
 // Friendly per-kiosk coin name, falling back to "Coin 1/2" when unset.
 function coinName(k,s){if(s==3)return 'Combo (Coin 1 + Coin 2)';return (k&&(s==1?k.coin1Name:k.coin2Name))||('Coin '+s)}
+// Live-update just the sync badge on the Coin Images page (that page is skipped
+// by the full auto-refresh so the file picker isn't disturbed, which otherwise
+// left the badge frozen on "Pending sync" after the kiosk had already caught up).
+async function refreshImagesBadge(){
+  const el=document.getElementById('imgSyncBadge');
+  if(!el||!_imgKiosk) return;
+  try{
+    const kiosks=await api('/api/kiosks');
+    const k=kiosks.find(x=>x.id===_imgKiosk);
+    if(!k) return;
+    el.innerHTML=k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending sync</span>';
+  }catch(e){/* leave as-is */}
+}
 function refresh(){
   if(!token) return;
+  // The Coin Images page is skipped below, but keep its sync badge fresh.
+  if(view.name==='images'){ refreshImagesBadge(); return; }
   // Don't auto-rebuild while the user is editing a field (it would wipe input).
   const ae=document.activeElement;
   if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
@@ -370,7 +385,7 @@ async function renderImages(el){
         ${kiosks.map(x=>`<option value="${x.id}" ${x.id===_imgKiosk?'selected':''}>${esc(x.name)}</option>`).join('')}
       </select>
       ${k?`<span class="muted">${esc(k.location||k.destination)}</span>`:''}
-      ${k?(k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending sync</span>'):''}
+      <span id="imgSyncBadge">${k?(k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending sync</span>'):''}</span>
     </div>
     ${k?slotBlock(1)+slotBlock(2):'<div class="empty">No kiosks yet. Add one from the Fleet view.</div>'}
     <div class="card">
