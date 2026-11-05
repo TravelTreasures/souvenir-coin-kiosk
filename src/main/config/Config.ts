@@ -70,6 +70,11 @@ export interface KioskConfig {
    *  (an "unavailable" screen; Admin still reachable). */
   operationalStatus?: string
 
+  /** Highest remote-refill command version already applied. The fleet refill is a
+   *  one-shot command (like the admin-PIN push): it's applied only when the
+   *  server's refill version is higher, so a normal config sync never re-adds coins. */
+  appliedRefillVersion?: number
+
   // ---- Combo Sale (both coins as one product) ----
   /** Fleet master switch: is the combo offered at all. */
   comboEnabled?: boolean
@@ -142,6 +147,7 @@ const DEFAULTS: KioskConfig = {
   adminPin: '1234',
   appliedAdminPinVersion: 0,
   appliedConfigVersion: 0,
+  appliedRefillVersion: 0,
   lastSyncedTxId: 0,
   // OTA defaults: overnight window 02:00–04:00 local, enabled, stable channel.
   otaChannel: 'stable',

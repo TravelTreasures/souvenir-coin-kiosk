@@ -15,7 +15,7 @@
 import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { getConfig, updateConfig, setPriceCents } from '../config/Config'
-import { getTransactionsSince, getHopperEventsSince, pruneSyncedTransactions, pruneSyncedHopperEvents } from '../database/Database'
+import { getTransactionsSince, getHopperEventsSince, pruneSyncedTransactions, pruneSyncedHopperEvents, setHopperCount, insertHopperEvent } from '../database/Database'
 import { HopperController } from '../hopper/HopperController'
 import type { NayaxController } from '../nayax/NayaxController'
 import { runUpdateTick, getUpdateReport } from '../update/UpdateController'
@@ -231,6 +231,24 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         updateConfig({ appliedConfigVersion: conf.configVersion })
         console.log(`[fleet-sync] applied config v${conf.configVersion} (price ${conf.coinPriceCents})`)
       }
+      // Remote refill — a ONE-SHOT command (like the admin-PIN push). When the
+      // server's refill version is newer than what we've applied, add the coins to
+      // the hopper and log it as a refill, exactly like an on-kiosk Admin refill.
+      // Gated by appliedRefillVersion so a normal config sync never re-adds coins.
+      if (conf.refill && typeof conf.refill.version === 'number' && conf.refill.version > (cfg.appliedRefillVersion ?? 0)) {
+        const hopper = conf.refill.hopper === 2 ? 2 : 1
+        const qty = Math.max(0, Math.round(Number(conf.refill.quantity) || 0))
+        if (qty > 0) {
+          const address = hopper === 1 ? HopperController.HOPPER_1_ADDR : HopperController.HOPPER_2_ADDR
+          const before = mdb.getCoinCount(address)
+          const after = before + qty
+          mdb.setCoinCount(address, after)
+          setHopperCount(hopper as 1 | 2, after)
+          insertHopperEvent({ hopperId: hopper as 1 | 2, type: 'refill', quantity: qty, oldStock: before, newStock: after, reason: 'Remote refill (Fleet Admin)', operator: 'Fleet Admin (remote)', operatorRole: 'office' })
+          console.log(`[fleet-sync] remote refill: +${qty} to hopper ${hopper} (${before} → ${after})`)
+        }
+        updateConfig({ appliedRefillVersion: conf.refill.version })
+      }
       updateConfig({ fleetStatus: { state: 'ok', at: new Date().toISOString() } })
     } else {
       console.log(`[fleet-sync] config pull failed: HTTP ${res.status}`)
@@ -302,6 +320,7 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
       body: JSON.stringify({
         appVersion: app.getVersion(),
         appliedConfigVersion: fresh.appliedConfigVersion,
+        appliedRefillVersion: fresh.appliedRefillVersion ?? 0,
         coinPriceCents: fresh.coinPriceCents,
         mdbConnected: mdb.isConnected(),
         nayaxConnected: nayax.isConnected(),

@@ -1,6 +1,6 @@
 {
   "name": "souvenir-fleet-server",
-  "version": "1.18.0",
+  "version": "1.20.0",
   "description": "Centralized Admin Web Application for monitoring and managing Souvenir Coin Kiosks",
   "type": "module",
   "main": "server.js",

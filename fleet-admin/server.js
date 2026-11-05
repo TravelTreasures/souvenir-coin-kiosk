@@ -436,6 +436,15 @@ const server = createServer(async (req, res) => {
         }
         // Record which config version the kiosk has actually applied (confirmation).
         if (typeof b.appliedConfigVersion === 'number') kiosk.appliedConfigVersion = b.appliedConfigVersion
+        // Confirm the remote refill landed. Once applied, clear the pending command
+        // so the dashboard shows it as done (the refill event syncs back separately).
+        if (typeof b.appliedRefillVersion === 'number') {
+          kiosk.appliedRefillVersion = b.appliedRefillVersion
+          if (b.appliedRefillVersion >= (kiosk.refillVersion ?? 0) && kiosk.refillQuantity) {
+            kiosk.lastRefillDone = { hopper: kiosk.refillHopper ?? 1, quantity: kiosk.refillQuantity, at: new Date().toISOString() }
+            kiosk.refillQuantity = 0
+          }
+        }
         if (b.appVersion) { kiosk.appVersion = b.appVersion; kiosk.currentVersion = b.appVersion }
         // OTA status the kiosk reports (idle/checking/downloading/installing/successful/failed).
         if (typeof b.updateStatus === 'string') kiosk.updateStatus = b.updateStatus
@@ -525,6 +534,13 @@ const server = createServer(async (req, res) => {
             enabled: kiosk.comboEnabled === true,
             priceCents: typeof kiosk.comboPriceCents === 'number' ? kiosk.comboPriceCents : 0,
             allowOverride: kiosk.comboAllowKioskOverride === true
+          },
+          // Remote refill — one-shot command. The kiosk applies it only when
+          // version > its appliedRefillVersion, then adds the coins + logs a refill.
+          refill: {
+            hopper: kiosk.refillHopper === 2 ? 2 : 1,
+            quantity: typeof kiosk.refillQuantity === 'number' ? kiosk.refillQuantity : 0,
+            version: kiosk.refillVersion ?? 0
           },
           operators: data().operators.map((o) => ({ id: o.id, name: o.name, pin: o.pin, role: o.role })),
           // OTA policy: feed, approved target version, and the install window.
@@ -1169,6 +1185,22 @@ const server = createServer(async (req, res) => {
         save()
         return json(res, 201, rec)
       }
+      // Remote refill — record coins added to a hopper from the office. Pushed to
+      // the kiosk as a one-shot command; the kiosk adds the coins + logs a refill.
+      if (req.method === 'POST' && sub === 'refill') {
+        if (sess.role !== 'admin') return json(res, 403, { error: 'Admin only' })
+        const b = await body(req)
+        const hopper = Number(b.hopper) === 2 ? 2 : 1
+        const quantity = Math.max(0, Math.round(Number(b.quantity) || 0))
+        if (!(quantity > 0)) return json(res, 400, { error: 'quantity must be a positive number' })
+        kiosk.refillHopper = hopper
+        kiosk.refillQuantity = quantity
+        kiosk.refillVersion = (kiosk.refillVersion ?? 0) + 1
+        bumpConfig(kiosk)
+        save()
+        logIngest(kiosk.id, 'out', 'refill', `hopper=${hopper} qty=${quantity} v=${kiosk.refillVersion}`)
+        return json(res, 201, { ok: true, hopper, quantity, version: kiosk.refillVersion })
+      }
       if (req.method === 'GET' && sub === 'schedules') {
         return json(res, 200, data().scheduledChanges.filter((s) => s.kioskId === kiosk.id)
           .sort((a, b2) => a.applyAt.localeCompare(b2.applyAt)))
@@ -1248,6 +1280,9 @@ function serveImage(name, res) {
 const tick = () => { applyDueSchedules(); monitorFleet() }
 tick()
 setInterval(tick, 60_000)
+// Apply due price schedules more often so a change fires within ~15s of its set
+// time rather than up to a minute late.
+setInterval(applyDueSchedules, 15_000)
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('[fleet] Central Admin Web Application running:')

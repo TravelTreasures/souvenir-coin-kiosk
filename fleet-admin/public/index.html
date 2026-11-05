@@ -91,7 +91,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.0</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -138,7 +138,7 @@ function refresh(){
   // Skip views with charts, file pickers, or editing forms to avoid flicker /
   // losing a selected file or half-filled form (these config screens don't need
   // an 8-second live refresh).
-  if(view.name==='global' || view.name==='images' || view.name==='users' || view.name==='operators' || view.name==='destinations' || view.name==='pricing' || view.name==='updates' || (view.name==='kiosk' && ['overview','sales','transactions','marketing','inventory'].includes(kioskTab))) return;
+  if(view.name==='global' || view.name==='images' || view.name==='users' || view.name==='operators' || view.name==='destinations' || view.name==='pricing' || view.name==='updates' || (view.name==='kiosk' && ['overview','sales','transactions','marketing','inventory','refill'].includes(kioskTab))) return;
   // Preserve the scroll position across the rebuild so an auto-refresh doesn't
   // jump the page back to the top while the user is reading further down.
   const y=window.scrollY;
@@ -721,11 +721,14 @@ async function addKiosk(){
 
 /* ---------- KIOSK DETAIL ---------- */
 let kioskTab='overview';
+// Schedule-a-price-change draft, captured as the user types (reliable across
+// Safari date/time .value quirks and any re-render).
+let schDraft={price:'',date:'',time:''};
 async function renderKiosk(el,id,isAuto){
   if(!isAuto) kioskTab=kioskTab||'overview';
   const k=await api('/api/kiosks/'+id);
-  const tabs=['overview','transactions','sales','inventory','marketing','alerts','maintenance'];
-  const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance'};
+  const tabs=['overview','transactions','sales','inventory','refill','marketing','alerts','maintenance'];
+  const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',refill:'Refill',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance'};
   const alerts=await api('/api/kiosks/'+id+'/alerts');
   const _frame=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / ${esc(k.name)}</div>
@@ -822,8 +825,8 @@ async function renderKioskTab(id,k,alerts,isAuto){
           ${admin()?`
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
             <div class="label" style="margin-bottom:6px">Schedule a price change</div>
-            <div class="row" style="flex-wrap:wrap"><span class="dim">R</span><input type="number" id="schprice" min="0" step="1" placeholder="price" style="width:90px"/><input type="date" id="schdate" style="width:150px"/><input type="time" id="schtime" style="width:110px"/><button class="ghost" onclick="schedulePrice('${id}')">Schedule</button><span id="schmsg" class="ok"></span></div>
-            ${pendingSched.length?`<div style="margin-top:10px">${pendingSched.map(s=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="muted">${rand(s.priceCents)} on ${esc(s.applyAt.replace('T',' ').substring(0,16))}</span><button class="ghost" style="padding:4px 10px;font-size:.78rem" onclick="cancelSchedule(${s.id})">Cancel</button></div>`).join('')}</div>`:'<div class="muted" style="margin-top:8px;font-size:.8rem">No scheduled changes</div>'}
+            <div class="row" style="flex-wrap:wrap"><span class="dim">R</span><input type="number" id="schprice" min="0" step="1" placeholder="price" style="width:90px" value="${schDraft.price}" oninput="schDraft.price=this.value" onchange="schDraft.price=this.value"/><input type="date" id="schdate" style="width:150px" value="${schDraft.date}" oninput="schDraft.date=this.value" onchange="schDraft.date=this.value"/><input type="time" id="schtime" style="width:110px" value="${schDraft.time}" oninput="schDraft.time=this.value" onchange="schDraft.time=this.value"/><button class="ghost" onclick="schedulePrice('${id}')">Schedule</button><span id="schmsg" class="ok"></span></div>
+            ${pendingSched.length?`<div style="margin-top:10px">${pendingSched.map(s=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="muted">${rand(s.priceCents)} on ${esc(new Date(s.applyAt).toLocaleString([], {dateStyle:'medium', timeStyle:'short'}))}</span><button class="ghost" style="padding:4px 10px;font-size:.78rem" onclick="cancelSchedule(${s.id})">Cancel</button></div>`).join('')}</div>`:'<div class="muted" style="margin-top:8px;font-size:.8rem">No scheduled changes</div>'}
           </div>`:''}
         </div>
         <div class="card">
@@ -969,6 +972,30 @@ async function renderKioskTab(id,k,alerts,isAuto){
     c.innerHTML=(admin()?`<div class="row" style="margin-bottom:16px"><input id="mnote" placeholder="Add maintenance note…" style="flex:1"/><button class="btn" onclick="addMaint('${id}')">Add</button></div>`:'')+
       (m.length?'<table><thead><tr><th>Date/Time</th><th>By</th><th>Note</th></tr></thead><tbody>'+m.map(x=>`<tr><td class="dim">${esc((x.createdAt||'').substring(0,19))}</td><td>${esc(x.by)}</td><td>${esc(x.note)}</td></tr>`).join('')+'</tbody></table>':'<div class="empty">No maintenance records.</div>');
   }
+  else if(kioskTab==='refill'){
+    const h1=k.hopper1?k.hopper1.coinCount:null, h2=k.hopper2?k.hopper2.coinCount:null;
+    const pending=(k.refillVersion??0)>(k.appliedRefillVersion??0);
+    const last=k.lastRefillDone;
+    const _rfsig=JSON.stringify([h1,h2,pending,last,admin()]);
+    if(isAuto && c.dataset.rfsig===_rfsig) return;
+    c.dataset.rfsig=_rfsig;
+    c.innerHTML=`
+      <div class="muted" style="font-size:.85rem;margin-bottom:14px">Record coins added to a hopper from the office. This is sent to the kiosk, which adds the coins to its count and logs it as a refill — exactly like an on-site Admin refill. Make sure the coins are physically loaded first.</div>
+      <div class="row" style="gap:12px;margin-bottom:16px">
+        <div class="card" style="flex:1"><div class="row between"><span>Hopper 1 (${esc(coinName(k,1))})</span><b>${h1==null?'—':h1}</b></div></div>
+        <div class="card" style="flex:1"><div class="row between"><span>Hopper 2 (${esc(coinName(k,2))})</span><b>${h2==null?'—':h2}</b></div></div>
+      </div>
+      ${admin()?`<div class="card">
+        <div class="label" style="margin-bottom:10px">Add coins (remote refill)</div>
+        <div class="row" style="flex-wrap:wrap;gap:10px">
+          <select id="rfhop"><option value="1">Hopper 1 — ${esc(coinName(k,1))}</option><option value="2">Hopper 2 — ${esc(coinName(k,2))}</option></select>
+          <span class="dim">Qty</span><input type="number" id="rfqty" min="1" step="1" placeholder="coins added" style="width:130px"/>
+          <button class="btn" onclick="sendRefill('${id}')">Send refill</button>
+          <span id="rfmsg" class="ok"></span>
+        </div>
+        <div class="muted" style="margin-top:12px;font-size:.82rem">${pending?'<span style="color:var(--amber)">● Pending — waiting for the kiosk to apply on its next sync</span>':(last?('✓ Last remote refill: +'+last.quantity+' to hopper '+last.hopper+' on '+esc((last.at||'').replace('T',' ').substring(0,19))):'No remote refills sent yet')}</div>
+      </div>`:'<div class="muted">View only — admin required to send a refill.</div>'}`;
+  }
   else if(kioskTab==='inventory'){
     window._invp=window._invp||'month';
     const inv=await api('/api/kiosks/'+id+'/inventory?period='+window._invp);
@@ -1018,15 +1045,32 @@ async function setDest(id){const v=document.getElementById('kdest').value;await 
 async function setTags(id){const v=document.getElementById('ktags').value.split(',').map(s=>s.trim()).filter(Boolean);await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({tags:v})});document.getElementById('kmetamsg').textContent='Tags saved';setTimeout(()=>render(),600)}
 async function setCoinNames(id){const coin1Name=document.getElementById('cn1').value,coin2Name=document.getElementById('cn2').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({coin1Name,coin2Name})});document.getElementById('cnmsg').textContent='Saved';setTimeout(()=>render(),600)}
 async function setCombo(id){const comboEnabled=document.getElementById('comboOn').checked,comboAllowKioskOverride=document.getElementById('comboOverride').checked,comboPriceCents=Math.max(0,Math.round(parseFloat(document.getElementById('comboPrice').value||'0')*100));await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({comboEnabled,comboPriceCents,comboAllowKioskOverride})});document.getElementById('combomsg').textContent='Saved — applies on next kiosk sync';setTimeout(()=>render(),800)}
+async function sendRefill(id){
+  const hopper=parseInt(document.getElementById('rfhop').value,10)||1;
+  const quantity=Math.round(parseFloat(document.getElementById('rfqty').value));
+  if(!isFinite(quantity)||quantity<1){document.getElementById('rfmsg').textContent='Enter how many coins were added';return}
+  if(!confirm('Add '+quantity+' coins to Hopper '+hopper+' on this kiosk?\\n\\nOnly do this if the coins have actually been loaded into the hopper.')){return}
+  const r=await api('/api/kiosks/'+id+'/refill',{method:'POST',body:JSON.stringify({hopper,quantity})});
+  document.getElementById('rfmsg').textContent=r.error||('Sent — +'+quantity+' to hopper '+hopper+' (applies on next sync)');
+  if(!r.error)setTimeout(()=>render(),900);
+}
 async function schedulePrice(id){
-  const p=parseFloat(document.getElementById('schprice').value);
-  const d=document.getElementById('schdate').value,t=document.getElementById('schtime').value;
+  // Read from the draft captured on input/change (not only the live inputs), so a
+  // Safari date/time .value quirk or a re-render can't blank the values at click.
+  const de=document.getElementById('schdate'),te=document.getElementById('schtime'),pe=document.getElementById('schprice');
+  let d=(schDraft.date||de.value||'').trim();
+  let t=(schDraft.time||te.value||'').trim();
+  // Last-ditch: build from the native value-as-date (survives string .value quirks).
+  if(!d && de.valueAsNumber){const x=new Date(de.valueAsNumber);d=x.getUTCFullYear()+'-'+String(x.getUTCMonth()+1).padStart(2,'0')+'-'+String(x.getUTCDate()).padStart(2,'0');}
+  if(!t && te.valueAsNumber){const x=new Date(te.valueAsNumber);t=String(x.getUTCHours()).padStart(2,'0')+':'+String(x.getUTCMinutes()).padStart(2,'0');}
+  const p=parseFloat(schDraft.price||pe.value);
   if(!isFinite(p)||p<0){document.getElementById('schmsg').textContent='Enter a price';return}
-  if(!d||!t){document.getElementById('schmsg').textContent='Pick a date and time';return}
+  if(!d||!t){document.getElementById('schmsg').textContent='Pick a date and time (got d="'+d+'" t="'+t+'")';return}
   const applyAt=new Date(d+'T'+t);
   if(isNaN(applyAt.getTime())){document.getElementById('schmsg').textContent='Invalid date/time';return}
   const r=await api('/api/kiosks/'+id+'/schedule',{method:'POST',body:JSON.stringify({priceCents:Math.round(p*100),applyAt:applyAt.toISOString()})});
-  document.getElementById('schmsg').textContent=r.error||'Scheduled';if(!r.error)setTimeout(()=>render(),700);
+  document.getElementById('schmsg').textContent=r.error||('Scheduled for '+d+' '+t);
+  if(!r.error){schDraft={price:'',date:'',time:''};setTimeout(()=>render(),700);}
 }
 async function cancelSchedule(sid){await api('/api/schedules/cancel',{method:'POST',body:JSON.stringify({id:sid})});render()}
 async function savePromo(id){
