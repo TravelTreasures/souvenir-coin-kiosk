@@ -390,7 +390,6 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
             {/* Maintenance: empty + refill (recorded automatically against the signed-in operator) */}
             {canMaintain && (
             <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 720 }}>
-              {canConfig && (
               <div style={{ padding: '18px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,162,39,0.15)' }}>
                 <h4 style={{ color: 'var(--text-white)', marginBottom: 6 }}>Empty Hopper</h4>
                 <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: 12 }}>
@@ -414,7 +413,6 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                   <button className="btn btn-gold" style={{ padding: '10px 22px' }} onClick={doEmptyHopper}>Dispense</button>
                 </div>
               </div>
-              )}
 
               <div style={{ padding: '18px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,162,39,0.15)' }}>
                 <h4 style={{ color: 'var(--text-white)', marginBottom: 6 }}>Refill Hopper</h4>
