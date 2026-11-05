@@ -366,6 +366,36 @@ function kioskSummary(k) {
   }
 }
 
+/** Current calendar month as YYYY-MM in server-local time. */
+function currentMonthKey() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Monthly refill log: keep only refills from the CURRENT calendar month.
+ * On the 1st of a new month this deletes the previous month's refill entries
+ * (type 'refill') and drops any per-hopper "last refill" records that fall
+ * outside the current month, so the Refill tab's log starts fresh each month.
+ * Empty/maintenance events are left untouched.
+ */
+function purgeOldRefills() {
+  const month = currentMonthKey()
+  const before = data().hopperEvents.length
+  data().hopperEvents = data().hopperEvents.filter(
+    (e) => e.type !== 'refill' || (norm(e.createdAt) || '').substring(0, 7) === month
+  )
+  let changed = before !== data().hopperEvents.length
+  for (const k of data().kiosks) {
+    if (!k.lastRefillByHopper) continue
+    for (const h of Object.keys(k.lastRefillByHopper)) {
+      const at = k.lastRefillByHopper[h]?.at || ''
+      if ((norm(at) || at).substring(0, 7) !== month) { delete k.lastRefillByHopper[h]; changed = true }
+    }
+  }
+  if (changed) save()
+}
+
 /** Apply any scheduled price changes whose time has arrived. */
 function applyDueSchedules() {
   const now = Date.now()
@@ -418,6 +448,19 @@ const server = createServer(async (req, res) => {
       return json(res, 401, { error: 'Invalid username or password' })
     }
 
+    // ---- Operator login (name + PIN) — refill-only access ----
+    // Field staff listed under Operators can sign in with their name + PIN to
+    // record refills remotely. They get a restricted 'operator' session that the
+    // gate below confines to the refill endpoints only.
+    if (req.method === 'POST' && path === '/api/operator-login') {
+      const b = await body(req)
+      const name = String(b.name || '').trim()
+      const pin = String(b.pin || '').trim()
+      const op = data().operators.find((o) => o.name === name && String(o.pin) === pin)
+      if (op) return json(res, 200, { token: newToken(op.name, 'operator'), username: op.name, role: 'operator' })
+      return json(res, 401, { error: 'Invalid operator name or PIN' })
+    }
+
     // ---- Kiosk ingest (per-kiosk API key) ----
     if (path.startsWith('/api/ingest/')) {
       const apiKey = req.headers['x-kiosk-key'] || bearer(req)
@@ -441,7 +484,13 @@ const server = createServer(async (req, res) => {
         if (typeof b.appliedRefillVersion === 'number') {
           kiosk.appliedRefillVersion = b.appliedRefillVersion
           if (b.appliedRefillVersion >= (kiosk.refillVersion ?? 0) && kiosk.refillQuantity) {
-            kiosk.lastRefillDone = { hopper: kiosk.refillHopper ?? 1, quantity: kiosk.refillQuantity, at: new Date().toISOString() }
+            const doneHopper = kiosk.refillHopper ?? 1
+            const rec = { hopper: doneHopper, quantity: kiosk.refillQuantity, at: new Date().toISOString() }
+            kiosk.lastRefillDone = rec
+            // Keep the most recent confirmed refill PER hopper so sending hopper 1
+            // then hopper 2 doesn't make hopper 1's record disappear.
+            kiosk.lastRefillByHopper = kiosk.lastRefillByHopper || {}
+            kiosk.lastRefillByHopper[String(doneHopper)] = rec
             kiosk.refillQuantity = 0
           }
         }
@@ -564,6 +613,20 @@ const server = createServer(async (req, res) => {
     // ---- Everything else requires a valid session ----
     const sess = session(req)
     if (!sess) return json(res, 401, { error: 'Unauthorized' })
+
+    // Operators are confined to the refill endpoints — list kiosks, read a
+    // kiosk + its hopper counts / refill log, and send a refill. Nothing else.
+    if (sess.role === 'operator') {
+      const okGet = req.method === 'GET' && (
+        path === '/api/me' ||
+        path === '/api/kiosks' ||
+        /^\/api\/kiosks\/[^/]+$/.test(path) ||
+        /^\/api\/kiosks\/[^/]+\/(refill-log|inventory)$/.test(path)
+      )
+      const okPost = req.method === 'POST' && /^\/api\/kiosks\/[^/]+\/refill$/.test(path)
+      if (!okGet && !okPost) return json(res, 403, { error: 'Operators can only record refills' })
+    }
+
     const isAdmin = sess.role === 'admin'
     const requireAdmin = () => { json(res, 403, { error: 'Admin role required' }); return false }
 
@@ -684,8 +747,9 @@ const server = createServer(async (req, res) => {
       return json(res, 404, { error: 'Not found' })
     }
 
-    // Block mutations for viewers (read-only role)
-    if (!isAdmin && req.method !== 'GET') return requireAdmin()
+    // Block mutations for viewers (read-only role). Operators are exempt here
+    // because the whitelist gate above already limits them to the refill POST.
+    if (!isAdmin && sess.role !== 'operator' && req.method !== 'GET') return requireAdmin()
 
     // List kiosks (main dashboard)
     if (req.method === 'GET' && path === '/api/kiosks') {
@@ -1034,7 +1098,7 @@ const server = createServer(async (req, res) => {
     }
 
     // Kiosk-scoped routes: /api/kiosks/:id/...
-    const m = path.match(/^\/api\/kiosks\/([^/]+)(\/(\w+))?$/)
+    const m = path.match(/^\/api\/kiosks\/([^/]+)(\/([\w-]+))?$/)
     if (m) {
       const kiosk = kioskById(m[1])
       if (!kiosk) return json(res, 404, { error: 'Kiosk not found' })
@@ -1188,7 +1252,7 @@ const server = createServer(async (req, res) => {
       // Remote refill — record coins added to a hopper from the office. Pushed to
       // the kiosk as a one-shot command; the kiosk adds the coins + logs a refill.
       if (req.method === 'POST' && sub === 'refill') {
-        if (sess.role !== 'admin') return json(res, 403, { error: 'Admin only' })
+        if (sess.role !== 'admin' && sess.role !== 'operator') return json(res, 403, { error: 'Not permitted' })
         const b = await body(req)
         const hopper = Number(b.hopper) === 2 ? 2 : 1
         const quantity = Math.max(0, Math.round(Number(b.quantity) || 0))
@@ -1232,6 +1296,16 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && sub === 'maintenance') {
         return json(res, 200, data().maintenance.filter((x) => x.kioskId === kiosk.id))
+      }
+      // Monthly refill log: this calendar month's refills only (older ones are
+      // purged automatically on the 1st). Newest first.
+      if (req.method === 'GET' && sub === 'refill-log') {
+        const month = currentMonthKey()
+        const events = data().hopperEvents
+          .filter((e) => e.kioskId === kiosk.id && e.type === 'refill' && (norm(e.createdAt) || '').substring(0, 7) === month)
+          .sort((a, b) => b.id - a.id)
+        const total = events.reduce((a, e) => a + (e.quantity || 0), 0)
+        return json(res, 200, { month, total, count: events.length, events })
       }
       if (req.method === 'POST' && sub === 'maintenance') {
         const b = await body(req)
@@ -1277,7 +1351,7 @@ function serveImage(name, res) {
 }
 
 // Fleet health monitoring + scheduled changes — run on boot and every 60s.
-const tick = () => { applyDueSchedules(); monitorFleet() }
+const tick = () => { applyDueSchedules(); monitorFleet(); purgeOldRefills() }
 tick()
 setInterval(tick, 60_000)
 // Apply due price schedules more often so a change fires within ~15s of its set

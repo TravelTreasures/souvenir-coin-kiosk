@@ -83,15 +83,27 @@
 <div id="login" class="login">
   <div class="brand" style="font-size:1.5rem">Fleet Admin</div>
   <p class="muted" style="margin:6px 0 4px">Souvenir Coin Kiosk — Central Dashboard</p>
-  <input type="text" id="user" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('pw').focus()"/>
-  <input type="password" id="pw" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"/>
-  <div id="lerr" class="err" style="min-height:20px"></div>
-  <button class="btn" style="width:100%" onclick="login()">Sign In</button>
+  <div id="staffbox">
+    <div class="label" style="margin-bottom:8px;text-align:center">Staff sign-in</div>
+    <input type="text" id="user" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('pw').focus()"/>
+    <input type="password" id="pw" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"/>
+    <div id="lerr" class="err" style="min-height:20px"></div>
+    <button class="btn" style="width:100%" onclick="login()">Sign In</button>
+    <p class="muted" style="margin-top:14px;text-align:center"><a style="cursor:pointer;color:var(--gold-l)" onclick="loginMode('op')">Operator sign-in (refills)</a></p>
+  </div>
+  <div id="opbox" class="hide">
+    <div class="label" style="margin-bottom:8px;text-align:center;color:var(--gold-l)">Operator sign-in — refills only</div>
+    <input type="text" id="opname" placeholder="Operator name (e.g. Operator 1)" autocomplete="off" onkeydown="if(event.key==='Enter')document.getElementById('oppin').focus()"/>
+    <input type="password" id="oppin" inputmode="numeric" placeholder="PIN" autocomplete="off" onkeydown="if(event.key==='Enter')operatorLogin()"/>
+    <div id="operr" class="err" style="min-height:20px"></div>
+    <button class="btn" style="width:100%" onclick="operatorLogin()">Sign In</button>
+    <p class="muted" style="margin-top:14px;text-align:center"><a style="cursor:pointer;color:var(--gold-l)" onclick="loginMode('staff')">← Staff sign-in</a></p>
+  </div>
 </div>
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.0</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.10</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -104,6 +116,17 @@
 <script>
 let token=null, view={name:'fleet'}, timer=null, me=null;
 const admin=()=>me&&me.role==='admin';
+const isOperator=()=>me&&me.role==='operator';
+function loginMode(m){document.getElementById('staffbox').classList.toggle('hide',m==='op');document.getElementById('opbox').classList.toggle('hide',m!=='op');}
+async function operatorLogin(){
+  document.getElementById('operr').textContent='';
+  const name=document.getElementById('opname').value.trim();
+  const pin=document.getElementById('oppin').value.trim();
+  const r=await fetch('/api/operator-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
+  const d=await r.json();
+  if(d.token){token=d.token;me={username:d.username,role:d.role};document.getElementById('whoami').textContent=d.username+' · operator';showApp();kioskTab='refill';go({name:'fleet'});timer=setInterval(refresh,8000)}
+  else document.getElementById('operr').textContent=d.error||'Sign-in failed';
+}
 
 async function api(p,opts={}){
   const r=await fetch(p,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...(opts.headers||{})}});
@@ -115,9 +138,14 @@ const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','
 const ago=ts=>{if(!ts)return'never';const s=Math.floor((Date.now()-new Date(ts).getTime())/1000);if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'};
 const stLabel=s=>({active:'Active',maintenance:'Maintenance',out_of_service:'Out of Service'}[s]||s);
 
-function showLogin(){document.getElementById('login').classList.remove('hide');document.getElementById('app').classList.add('hide');if(timer)clearInterval(timer)}
+function showLogin(){document.getElementById('login').classList.remove('hide');document.getElementById('app').classList.add('hide');if(timer)clearInterval(timer);
+  // Clear any stale error text / passwords so a fresh visit to the login screen is clean.
+  ['lerr','operr'].forEach(i=>{const e=document.getElementById(i);if(e)e.textContent='';});
+  ['pw','oppin'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});
+  loginMode('staff');}
 function showApp(){document.getElementById('login').classList.add('hide');document.getElementById('app').classList.remove('hide')}
 async function login(){
+  document.getElementById('lerr').textContent='';
   const username=document.getElementById('user').value;
   const pw=document.getElementById('pw').value;
   const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password:pw})});
@@ -655,6 +683,17 @@ async function setPrice(id){
 
 /* ---------- MAIN DASHBOARD (all kiosks) ---------- */
 async function renderFleet(el,isAuto){
+  // Operators get a stripped-down picker: just the kiosks, to open the Refill tab.
+  if(isOperator()){
+    const kiosks=await api('/api/kiosks');
+    const _sig=JSON.stringify(['op',kiosks]);
+    if(isAuto && el.dataset.fsig===_sig) return;
+    el.dataset.fsig=_sig;
+    el.innerHTML=`
+      <div class="row between" style="margin-bottom:18px"><div class="crumbs">Select a kiosk to refill</div></div>
+      <div class="grid cards">${kiosks.map(kCard).join('')||'<div class="empty">No kiosks.</div>'}</div>`;
+    return;
+  }
   const [kiosks,g]=await Promise.all([api('/api/kiosks'),api('/api/reports/global?period=today')]);
   // On an auto-refresh, skip rebuilding the DOM when nothing changed (no flicker).
   const _sig=JSON.stringify([kiosks,g,window._tagFilter]);
@@ -725,16 +764,23 @@ let kioskTab='overview';
 // Safari date/time .value quirks and any re-render).
 let schDraft={price:'',date:'',time:''};
 async function renderKiosk(el,id,isAuto){
-  if(!isAuto) kioskTab=kioskTab||'overview';
+  // Operators only ever see the Refill tab in Fleet Admin.
+  if(isOperator()) kioskTab='refill';
+  else if(!isAuto) kioskTab=kioskTab||'overview';
   const k=await api('/api/kiosks/'+id);
-  const tabs=['overview','transactions','sales','inventory','refill','marketing','alerts','maintenance'];
+  const tabs=isOperator()?['refill']:['overview','transactions','sales','inventory','refill','marketing','alerts','maintenance'];
   const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',refill:'Refill',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance'};
-  const alerts=await api('/api/kiosks/'+id+'/alerts');
+  const alerts=isOperator()?[]:await api('/api/kiosks/'+id+'/alerts');
   const _frame=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / ${esc(k.name)}</div>
     <div class="row between">
       <div><h2 style="font-size:1.4rem">${esc(k.name)}</h2><div class="muted">${esc(k.location)} · ${esc(k.destination?.name||'')}</div></div>
-      <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
+      <div class="row" style="gap:8px;align-items:center">
+        ${k.synced
+          ? `<span class="pill on" title="Kiosk is running the current settings (config v${k.configVersion})">✓ Up to date</span>`
+          : `<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)" title="Server has config v${k.configVersion}, kiosk is on v${k.appliedConfigVersion} — it will apply on the next sync">● Changes pending</span>`}
+        <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
+      </div>
     </div>
     <div class="tabs">${tabs.map(t=>`<button class="tab ${t===kioskTab?'active':''}" onclick="kioskTab='${t}';render()">${labels[t]}${t==='alerts'&&alerts.length?`<span class="badge">${alerts.length}</span>`:''}</button>`).join('')}</div>
     <div id="ktab"></div>`;
@@ -742,7 +788,7 @@ async function renderKiosk(el,id,isAuto){
   // #ktab content (and its change-signature) survives an unchanged auto-refresh.
   // (Compare a stored signature — NOT el.innerHTML, which the browser normalises
   // on read so it would never match and the frame would always rebuild.)
-  const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,kioskTab,alerts.length]);
+  const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,k.synced,k.configVersion,k.appliedConfigVersion,kioskTab,alerts.length]);
   if(!el.querySelector('#ktab')||el.dataset.kframe!==_fsig){ el.innerHTML=_frame; el.dataset.kframe=_fsig; }
   await renderKioskTab(id,k,alerts,isAuto);
 }
@@ -817,10 +863,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
             <span id="prmsg" class="ok"></span>
           </div>
           <div style="margin-top:14px">
-            ${k.synced
-              ? `<span class="pill on">✓ Synced (config v${k.configVersion})</span>`
-              : `<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending — server v${k.configVersion} / kiosk v${k.appliedConfigVersion}</span>`}
-            <div class="muted" style="margin-top:8px">${k.lastConfigUpdate ? 'Last change: ' + esc(k.lastConfigUpdate.substring(0,19)) : 'No remote changes yet'}</div>
+            <div class="muted">${k.lastConfigUpdate ? 'Last change: ' + esc(k.lastConfigUpdate.substring(0,19)) : 'No remote changes yet'}</div>
           </div>
           ${admin()?`
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
@@ -973,19 +1016,32 @@ async function renderKioskTab(id,k,alerts,isAuto){
       (m.length?'<table><thead><tr><th>Date/Time</th><th>By</th><th>Note</th></tr></thead><tbody>'+m.map(x=>`<tr><td class="dim">${esc((x.createdAt||'').substring(0,19))}</td><td>${esc(x.by)}</td><td>${esc(x.note)}</td></tr>`).join('')+'</tbody></table>':'<div class="empty">No maintenance records.</div>');
   }
   else if(kioskTab==='refill'){
-    const h1=k.hopper1?k.hopper1.coinCount:null, h2=k.hopper2?k.hopper2.coinCount:null;
+    const hb=k.health||{};
+    const h1=hb.hopper1?hb.hopper1.coinCount:null, h2=hb.hopper2?hb.hopper2.coinCount:null;
     const pending=(k.refillVersion??0)>(k.appliedRefillVersion??0);
-    const last=k.lastRefillDone;
-    const _rfsig=JSON.stringify([h1,h2,pending,last,admin()]);
+    const byHop=k.lastRefillByHopper||{};
+    const lastLine=h=>byHop[String(h)]?('✓ Hopper '+h+': +'+byHop[String(h)].quantity+' on '+esc((byHop[String(h)].at||'').replace('T',' ').substring(0,19))):'';
+    const lastBoth=[lastLine(1),lastLine(2)].filter(Boolean).join('<br>');
+    const _rfsig=JSON.stringify([h1,h2,pending,byHop,admin()]);
     if(isAuto && c.dataset.rfsig===_rfsig) return;
     c.dataset.rfsig=_rfsig;
+    const log=await api('/api/kiosks/'+id+'/refill-log');
+    const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const mm=/^(\d{4})-(\d{2})$/.exec(log&&log.month||'');
+    const monthName=mm?MONTHS[+mm[2]-1]+' '+mm[1]:'this month';
+    const logRows=(log.events||[]).map(e=>`<tr><td>${esc((e.createdAt||'').replace('T',' ').substring(0,19))}</td><td>Hopper ${e.hopperId}${e.hopperId==1||e.hopperId==2?' — '+esc(coinName(k,e.hopperId)):''}</td><td class="ok">+${e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td></tr>`).join('');
+    const logTable=`<div class="card" style="margin-top:16px">
+      <div class="row between" style="margin-bottom:10px"><div class="label">Refill log — ${esc(monthName)}</div><span class="muted">${log.count||0} refill${(log.count||0)===1?'':'s'} · +${log.total||0} coins</span></div>
+      ${(log.events||[]).length?`<table><thead><tr><th>When</th><th>Hopper</th><th>Added</th><th>Stock</th><th>By</th></tr></thead><tbody>${logRows}</tbody></table>`:'<div class="muted">No refills yet this month.</div>'}
+      <div class="muted" style="font-size:.78rem;margin-top:10px">This log covers the current calendar month only — it clears automatically on the 1st and starts fresh.</div>
+    </div>`;
     c.innerHTML=`
       <div class="muted" style="font-size:.85rem;margin-bottom:14px">Record coins added to a hopper from the office. This is sent to the kiosk, which adds the coins to its count and logs it as a refill — exactly like an on-site Admin refill. Make sure the coins are physically loaded first.</div>
       <div class="row" style="gap:12px;margin-bottom:16px">
         <div class="card" style="flex:1"><div class="row between"><span>Hopper 1 (${esc(coinName(k,1))})</span><b>${h1==null?'—':h1}</b></div></div>
         <div class="card" style="flex:1"><div class="row between"><span>Hopper 2 (${esc(coinName(k,2))})</span><b>${h2==null?'—':h2}</b></div></div>
       </div>
-      ${admin()?`<div class="card">
+      ${(admin()||isOperator())?`<div class="card">
         <div class="label" style="margin-bottom:10px">Add coins (remote refill)</div>
         <div class="row" style="flex-wrap:wrap;gap:10px">
           <select id="rfhop"><option value="1">Hopper 1 — ${esc(coinName(k,1))}</option><option value="2">Hopper 2 — ${esc(coinName(k,2))}</option></select>
@@ -993,8 +1049,9 @@ async function renderKioskTab(id,k,alerts,isAuto){
           <button class="btn" onclick="sendRefill('${id}')">Send refill</button>
           <span id="rfmsg" class="ok"></span>
         </div>
-        <div class="muted" style="margin-top:12px;font-size:.82rem">${pending?'<span style="color:var(--amber)">● Pending — waiting for the kiosk to apply on its next sync</span>':(last?('✓ Last remote refill: +'+last.quantity+' to hopper '+last.hopper+' on '+esc((last.at||'').replace('T',' ').substring(0,19))):'No remote refills sent yet')}</div>
-      </div>`:'<div class="muted">View only — admin required to send a refill.</div>'}`;
+        <div class="muted" style="margin-top:12px;font-size:.82rem">${pending?'<span style="color:var(--amber)">● Pending — waiting for the kiosk to apply on its next sync</span>'+(lastBoth?'<br>'+lastBoth:''):(lastBoth||'No remote refills sent yet')}</div>
+      </div>`:'<div class="muted">View only.</div>'}
+      ${logTable}`;
   }
   else if(kioskTab==='inventory'){
     window._invp=window._invp||'month';

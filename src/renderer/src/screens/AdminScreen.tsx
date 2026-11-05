@@ -119,6 +119,15 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const role = me?.role ?? 'office'
   const canMaintain = role !== 'viewer'
   const canConfig = role === 'office'
+  // Only office staff get the full admin. Operators (and viewers) are limited to
+  // the Refill, Alerts and Diagnostics tabs — no sales, transactions or config.
+  const visibleTabs: Tab[] = canConfig
+    ? ['hoppers', 'sales', 'transactions', 'alerts', 'diagnostics', 'system']
+    : ['hoppers', 'alerts', 'diagnostics']
+  // If a restricted role somehow has a hidden tab selected, send them to Refill.
+  useEffect(() => {
+    if (!canConfig && !['hoppers', 'alerts', 'diagnostics'].includes(tab)) setTab('hoppers')
+  }, [canConfig, tab])
 
   // While the System tab is open, keep the price + fleet status fresh so a
   // remote price push from the Fleet Admin shows up here too. Don't overwrite
@@ -313,9 +322,9 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '0 20px' }}>
-        {(['hoppers', 'sales', 'transactions', 'alerts', 'diagnostics', 'system'] as Tab[]).map((t) => (
+        {visibleTabs.map((t) => (
           <button key={t} style={tabStyle(t)} onClick={() => setTab(t)}>
-            {{ hoppers: 'Hoppers', sales: 'Sales', transactions: 'Transactions', alerts: 'Alerts', diagnostics: 'Diagnostics', system: 'System' }[t]}
+            {{ hoppers: canConfig ? 'Hoppers' : 'Refill', sales: 'Sales', transactions: 'Transactions', alerts: 'Alerts', diagnostics: 'Diagnostics', system: 'System' }[t]}
             {t === 'alerts' && alerts.length > 0 && (
               <span
                 style={{
@@ -337,7 +346,9 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
         {/* ── HOPPERS ── */}
         {tab === 'hoppers' && hopperCounts && (
           <div style={{ maxWidth: 480 }}>
-            <h3 style={{ color: 'var(--text-white)', marginBottom: 24, fontSize: '1.1rem' }}>Hopper Coin Counts</h3>
+            <h3 style={{ color: 'var(--text-white)', marginBottom: 24, fontSize: '1.1rem' }}>
+              {canConfig ? 'Hopper Coin Counts' : 'Current Coin Levels'}
+            </h3>
 
             {([1, 2] as (1|2)[]).map((h) => (
               <div key={h}
@@ -346,19 +357,20 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                 <input
                   type="number" min={0} max={1000}
                   value={h === 1 ? editH1 : editH2}
+                  disabled={!canConfig}
                   onChange={(e) => h === 1 ? setEditH1(e.target.value) : setEditH2(e.target.value)}
                   style={{
                     width: 120, padding: '10px 14px', borderRadius: 10,
                     border: '1px solid rgba(201,162,39,0.4)',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: 'var(--text-white)', fontSize: '1.1rem'
+                    background: canConfig ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
+                    color: canConfig ? 'var(--text-white)' : 'var(--text-dim)', fontSize: '1.1rem'
                   }}
                 />
                 <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>/ 1,000 coins</span>
               </div>
             ))}
 
-            {canMaintain && (
+            {canConfig && (
               <button
                 onClick={saveHopperCounts} disabled={saving}
                 className="btn btn-gold"
@@ -378,6 +390,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
             {/* Maintenance: empty + refill (recorded automatically against the signed-in operator) */}
             {canMaintain && (
             <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 720 }}>
+              {canConfig && (
               <div style={{ padding: '18px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,162,39,0.15)' }}>
                 <h4 style={{ color: 'var(--text-white)', marginBottom: 6 }}>Empty Hopper</h4>
                 <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: 12 }}>
@@ -401,6 +414,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                   <button className="btn btn-gold" style={{ padding: '10px 22px' }} onClick={doEmptyHopper}>Dispense</button>
                 </div>
               </div>
+              )}
 
               <div style={{ padding: '18px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,162,39,0.15)' }}>
                 <h4 style={{ color: 'var(--text-white)', marginBottom: 6 }}>Refill Hopper</h4>
