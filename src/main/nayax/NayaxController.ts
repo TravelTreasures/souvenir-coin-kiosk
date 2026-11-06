@@ -199,10 +199,17 @@ export class NayaxController extends EventEmitter {
   }
 
   private async productionSale(amountCents: number, timeoutMs?: number): Promise<SaleResponse> {
-    this.saleInProgress = true
-    this.inbox = [] // clear stale reader events before a new sale
+    this.saleInProgress = true // set FIRST so a tap during this sale isn't treated as stray
     recordNayax({ dir: 'INFO', note: `SALE START — coin selected on screen, requesting vend R${(amountCents / 100).toFixed(2)}` })
     try {
+      // If a premature-tap (stray) session is still being dismissed, wait for it to
+      // finish and let the reader settle, so our vend opens a CLEAN session instead
+      // of colliding with the one that's still closing — the collision is what let a
+      // tap "go through" into a charge on the 2nd/3rd attempt.
+      const settleStart = Date.now()
+      while (this.cancellingStray && Date.now() - settleStart < 2500) await delay(50)
+      await delay(120)
+      this.inbox = [] // clear the stray begin_session/ended before the new sale
       // ALWAYS IDLE MODE: the reader is already enabled and waiting for a vend
       // request (set up at connect). The customer has already chosen the coin on
       // OUR screen, so send the vend request straight away — the reader then shows
@@ -419,6 +426,14 @@ export class NayaxController extends EventEmitter {
       // reader reply End Session (10 07) and return to idle, still enabled.
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
       await this.waitFor((e) => e === 'ended', 2000)
+      // After a vend-less session the reader displays "Product not chosen. No
+      // Charge" (red X) and sits there instead of returning to the idle "ready /
+      // tap to pay" screen. Re-enabling nudges it back to the ready state so the
+      // next customer sees a normal screen, not a leftover error. (ENABLE is safe
+      // — it's the opposite of DISABLE, which is what caused "out of order".)
+      await delay(150)
+      await this.sendCmd(CASHLESS.ENABLE)
+      recordNayax({ dir: 'INFO', note: 'STRAY SESSION closed + reader re-armed to ready (ENABLE)' })
     })
     this.sessionOpen = false
     this.cancellingStray = false
