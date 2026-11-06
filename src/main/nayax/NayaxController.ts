@@ -165,10 +165,15 @@ export class NayaxController extends EventEmitter {
       // session — the customer selects the coin on OUR screen, we send the vend
       // request, and the reader waits for the tap. This removes the stray
       // "Product not chosen" hang at the protocol level.
+      // NOTE: the 17 04 "Always Idle" request is ACKed by the MDB-RS232 box but the
+      // Nayax reader only honours selection-first / always-idle when its OWN Nayax
+      // terminal profile is set that way (a Nayax-side config). We still send it; it
+      // is harmless when unsupported.
       await this.sendCmd(CASHLESS.ALWAYS_IDLE)
       await delay(300)
       await this.sendCmd(CASHLESS.ENABLE)
-      console.log('[Nayax] card reader reset, configured (level 3), always-idle enabled')
+      console.log('[Nayax] card reader reset, configured (level 3), enabled')
+      recordNayax({ dir: 'INFO', note: 'CONNECT done — reader configured + ENABLED' })
     } catch (e) {
       console.error('[Nayax] reader init failed:', (e as Error).message)
     }
@@ -209,12 +214,10 @@ export class NayaxController extends EventEmitter {
       const settleStart = Date.now()
       while (this.cancellingStray && Date.now() - settleStart < 2500) await delay(50)
       await delay(120)
-      this.inbox = [] // clear the stray begin_session/ended before the new sale
-      // ALWAYS IDLE MODE: the reader is already enabled and waiting for a vend
-      // request (set up at connect). The customer has already chosen the coin on
-      // OUR screen, so send the vend request straight away — the reader then shows
-      // the amount and waits for the card tap. There is no reader-initiated "start
-      // button" session, so no stray "Product not chosen" state.
+      this.inbox = []
+      // The customer chose the coin on OUR screen; send the vend request. The
+      // reader prompts the card tap and approves. (With Always Idle configured on
+      // the reader's Nayax profile, this is the clean selection-first flow.)
       await this.sendCmd(requestVend(amountCents, 1))
 
       // Wait for the customer to tap and the reader to approve / deny / end.
@@ -259,6 +262,7 @@ export class NayaxController extends EventEmitter {
       await this.sendCmd(CASHLESS.VEND_CANCEL)
       await delay(80)
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
+      recordNayax({ dir: 'INFO', note: 'Vend aborted — reader back to ready' })
     })
     this.sessionOpen = false
   }
@@ -276,11 +280,10 @@ export class NayaxController extends EventEmitter {
       await this.waitFor((e) => e === 'ack' || e === 'ended', 2500)
       this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
-      // Wait for the reader to confirm it closed the session (returned to idle).
-      // Leave the reader ENABLED so it shows "ready", not "out of order". A too-fast
-      // second tap right after this is handled by cancelStraySession (safety net),
-      // which cancels the stray session without blanking the reader.
+      // Wait for the reader to confirm it closed the session. Leave it ENABLED so it
+      // returns to the ready screen, not "out of order".
       await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
+      recordNayax({ dir: 'INFO', note: 'Sale captured — reader back to ready' })
     })
     this.sessionOpen = false
   }
@@ -295,7 +298,7 @@ export class NayaxController extends EventEmitter {
       this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
       await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
-      // Leave the reader ENABLED (ready), not disabled — see confirmVend.
+      recordNayax({ dir: 'INFO', note: 'Refunded (dispense failed) — reader back to ready' })
     })
     this.sessionOpen = false
   }
@@ -317,10 +320,8 @@ export class NayaxController extends EventEmitter {
       this.saleInProgress = false
       return true
     }
-    // PRODUCTION: cancel any vend and close the session so the reader goes idle.
-    // Do NOT send CANCEL_READER (14 02) — it can drop the reader out of
-    // always-idle/enabled and show "out of order". VEND_CANCEL + SESSION_COMPLETE
-    // returns it to idle while it stays enabled and ready for the next sale.
+    // PRODUCTION: cancel any vend and close the session so the reader returns to
+    // the ready screen (stays ENABLED). Do NOT send CANCEL_READER (14 02).
     await this.safe(async () => {
       await this.sendCmd(CASHLESS.VEND_CANCEL)
       await delay(80)
@@ -328,6 +329,7 @@ export class NayaxController extends EventEmitter {
     })
     this.sessionOpen = false
     this.saleInProgress = false
+    recordNayax({ dir: 'INFO', note: 'Sale cancelled/reset — reader back to ready' })
     console.log('[Nayax] CANCEL/reset sent to reader (vend-cancel + session-complete)')
     return true
   }
@@ -413,30 +415,36 @@ export class NayaxController extends EventEmitter {
   // of order"). Debounced so a burst of begin_session lines can't stack up.
   // ------------------------------------------------------------------
   private cancellingStray = false
+  private strayPending = false
   private async cancelStraySession(): Promise<void> {
-    if (this.cancellingStray || this.saleInProgress) return
+    if (this.saleInProgress) return
+    // If a cancel is already running, flag that ANOTHER stray arrived so the loop
+    // below re-runs for it. This is what stops rapid, repeated push-starts from
+    // slipping a session through to "please select the product": every stray that
+    // lands mid-cancel gets its own close, never dropped.
+    if (this.cancellingStray) { this.strayPending = true; return }
     this.cancellingStray = true
     console.log('[Nayax] stray session (start button / early tap) — closing with session-complete')
     recordNayax({ dir: 'INFO', note: 'STRAY SESSION detected (reader start-button / early tap, no sale active) — closing with session-complete' })
-    await this.safe(async () => {
-      // The reader opened a bare session (no vend requested). The ONLY valid way
-      // to dismiss it is SESSION_COMPLETE (13 04) — NOT vend-cancel (13 01), which
-      // is out-of-sequence here and makes the reader fault ("command out of
-      // sequence" / stuck on "Transaction Canceled"). Session-complete makes the
-      // reader reply End Session (10 07) and return to idle, still enabled.
-      await this.sendCmd(CASHLESS.SESSION_COMPLETE)
-      await this.waitFor((e) => e === 'ended', 2000)
-      // After a vend-less session the reader displays "Product not chosen. No
-      // Charge" (red X) and sits there instead of returning to the idle "ready /
-      // tap to pay" screen. Re-enabling nudges it back to the ready state so the
-      // next customer sees a normal screen, not a leftover error. (ENABLE is safe
-      // — it's the opposite of DISABLE, which is what caused "out of order".)
-      await delay(150)
-      await this.sendCmd(CASHLESS.ENABLE)
-      recordNayax({ dir: 'INFO', note: 'STRAY SESSION closed + reader re-armed to ready (ENABLE)' })
-    })
+    do {
+      this.strayPending = false
+      await this.safe(async () => {
+        // The reader opened a bare session (no vend requested). The ONLY valid way
+        // to dismiss it is SESSION_COMPLETE (13 04) — NOT vend-cancel (13 01), which
+        // is out-of-sequence here. Session-complete makes the reader reply End
+        // Session (10 07) and return to idle, still enabled.
+        await this.sendCmd(CASHLESS.SESSION_COMPLETE)
+        await this.waitFor((e) => e === 'ended', 2000)
+        // Re-enable so the reader returns to the ready screen (not "out of order").
+        await delay(150)
+        await this.sendCmd(CASHLESS.ENABLE)
+      })
+      // A stray that arrived while we were closing the last one is handled on the
+      // next loop pass, so none are ever skipped.
+    } while (this.strayPending && !this.saleInProgress)
     this.sessionOpen = false
     this.cancellingStray = false
+    recordNayax({ dir: 'INFO', note: 'STRAY SESSION(S) closed + reader re-armed to ready' })
   }
 
   private async safe(fn: () => Promise<void>): Promise<void> {
