@@ -523,6 +523,17 @@ const server = createServer(async (req, res) => {
         return json(res, 200, { ok: true })
       }
 
+      // Nayax logbook push (diagnostics): store the reader's recent serial trace
+      // for this kiosk so it can be read from the dashboard. Latest buffer wins.
+      if (req.method === 'POST' && path === '/api/ingest/nayax-log') {
+        const b = await body(req)
+        const entries = Array.isArray(b.entries) ? b.entries.slice(-500) : []
+        const d = data()
+        if (!d.nayaxLogs) d.nayaxLogs = {}
+        d.nayaxLogs[kiosk.id] = { at: new Date().toISOString(), entries }
+        save()
+        return json(res, 200, { ok: true, stored: entries.length })
+      }
       if (req.method === 'POST' && path === '/api/ingest/sync') {
         const b = await body(req)
         const incoming = Array.isArray(b.transactions) ? b.transactions : []
@@ -621,7 +632,7 @@ const server = createServer(async (req, res) => {
         path === '/api/me' ||
         path === '/api/kiosks' ||
         /^\/api\/kiosks\/[^/]+$/.test(path) ||
-        /^\/api\/kiosks\/[^/]+\/(refill-log|inventory)$/.test(path)
+        /^\/api\/kiosks\/[^/]+\/(refill-log|inventory|nayax-log)$/.test(path)
       )
       const okPost = req.method === 'POST' && /^\/api\/kiosks\/[^/]+\/refill$/.test(path)
       if (!okGet && !okPost) return json(res, 403, { error: 'Operators can only record refills' })
@@ -1296,6 +1307,11 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && sub === 'maintenance') {
         return json(res, 200, data().maintenance.filter((x) => x.kioskId === kiosk.id))
+      }
+      // Nayax logbook (diagnostics) — the reader's recent serial trace.
+      if (req.method === 'GET' && sub === 'nayax-log') {
+        const log = (data().nayaxLogs || {})[kiosk.id] || { at: null, entries: [] }
+        return json(res, 200, log)
       }
       // Monthly refill log: this calendar month's refills only (older ones are
       // purged automatically on the 1st). Newest first.

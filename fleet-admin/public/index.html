@@ -103,7 +103,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.13</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.14</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -164,6 +164,7 @@ function logout(){token=null;showLogin()}
 function go(v){view=v;render()}
 // Friendly per-kiosk coin name, falling back to "Coin 1/2" when unset.
 function coinName(k,s){if(s==3)return 'Combo (Coin 1 + Coin 2)';return (k&&(s==1?k.coin1Name:k.coin2Name))||('Coin '+s)}
+function copyNayax(){const t=window._nayaxText||'';if(navigator.clipboard){navigator.clipboard.writeText(t).catch(()=>{});}}
 // Live-update just the sync badge on the Coin Images page (that page is skipped
 // by the full auto-refresh so the file picker isn't disturbed, which otherwise
 // left the badge frozen on "Pending sync" after the kiosk had already caught up).
@@ -789,8 +790,8 @@ async function renderKiosk(el,id,isAuto){
   if(isOperator()) kioskTab='refill';
   else if(!isAuto) kioskTab=kioskTab||'overview';
   const k=await api('/api/kiosks/'+id);
-  const tabs=isOperator()?['refill']:['overview','transactions','sales','inventory','refill','marketing','alerts','maintenance'];
-  const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',refill:'Refill',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance'};
+  const tabs=isOperator()?['refill']:['overview','transactions','sales','inventory','refill','marketing','alerts','maintenance','nayaxlog'];
+  const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',refill:'Refill',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance',nayaxlog:'Nayax Log'};
   const alerts=isOperator()?[]:await api('/api/kiosks/'+id+'/alerts');
   const _frame=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / ${esc(k.name)}</div>
@@ -1027,6 +1028,26 @@ async function renderKioskTab(id,k,alerts,isAuto){
     if(!alerts.length){c.innerHTML='<div class="card ok">✓ No outstanding alerts.</div>';return}
     c.innerHTML='<table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
       alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(a.dispenseResult)}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${esc(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
+  }
+  else if(kioskTab==='nayaxlog'){
+    const log=await api('/api/kiosks/'+id+'/nayax-log');
+    const entries=(log&&log.entries)||[];
+    const _nsig=JSON.stringify([log&&log.at,entries.length]);
+    if(isAuto && c.dataset.nsig===_nsig) return;
+    c.dataset.nsig=_nsig;
+    const col=d=>d==='TX'?'var(--gold-l)':d==='RX'?'#7fd1a0':'var(--amber)';
+    const rows=entries.map(e=>{
+      const t=(e.at||'').replace('T',' ').substring(11,23);
+      const body=e.dir==='INFO'?esc(e.note||''):(e.hex||'')+(e.event?('  <span class="dim">('+esc(e.event)+')</span>'):'');
+      return `<tr><td class="dim" style="white-space:nowrap">${t}</td><td style="color:${col(e.dir)};font-weight:700">${e.dir}</td><td class="mono" style="font-size:.82rem">${e.dir==='INFO'?esc(e.note||''):('<span class="mono">'+esc(e.hex||'')+'</span>'+(e.event?' <span class="dim">('+esc(e.event)+')</span>':''))}</td></tr>`;
+    }).join('');
+    c.innerHTML=`
+      <div class="row between" style="margin-bottom:10px">
+        <div class="muted" style="font-size:.85rem">Live serial trace from the Nayax reader (newest at the bottom). Updates within ~20s of activity. TX = kiosk→reader, RX = reader→kiosk, INFO = app markers.</div>
+        <div class="row" style="gap:8px"><span class="muted">${entries.length} lines${log&&log.at?' · updated '+ago(log.at):''}</span><button class="ghost" onclick="copyNayax()">Copy all</button></div>
+      </div>
+      ${entries.length?`<div style="max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:10px"><table style="width:100%"><tbody>${rows}</tbody></table></div>`:'<div class="empty">No Nayax activity recorded yet. Do a transaction on the kiosk and it will appear here within ~20 seconds.</div>'}`;
+    window._nayaxText=entries.map(e=>`${(e.at||'').replace('T',' ').substring(0,23)} ${e.dir} ${e.dir==='INFO'?(e.note||''):((e.hex||'')+(e.event?' ('+e.event+')':''))}`).join('\n');
   }
   else if(kioskTab==='maintenance'){
     const m=await api('/api/kiosks/'+id+'/maintenance');

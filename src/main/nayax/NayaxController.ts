@@ -32,6 +32,7 @@ import {
   toHex,
   type ReaderEvent
 } from './mdbCashless'
+import { recordNayax } from './nayaxLog'
 
 export type PaymentResult = 'approved' | 'declined' | 'communication_error' | 'timeout'
 
@@ -200,6 +201,7 @@ export class NayaxController extends EventEmitter {
   private async productionSale(amountCents: number, timeoutMs?: number): Promise<SaleResponse> {
     this.saleInProgress = true
     this.inbox = [] // clear stale reader events before a new sale
+    recordNayax({ dir: 'INFO', note: `SALE START — coin selected on screen, requesting vend R${(amountCents / 100).toFixed(2)}` })
     try {
       // ALWAYS IDLE MODE: the reader is already enabled and waiting for a vend
       // request (set up at connect). The customer has already chosen the coin on
@@ -216,11 +218,13 @@ export class NayaxController extends EventEmitter {
       if (!resp) {
         // No tap in time — cancel the pending vend and return the reader to idle
         // (still enabled / always-idle, NOT disabled).
+        recordNayax({ dir: 'INFO', note: 'TIMEOUT — no card tap in time, aborting vend' })
         await this.safe(() => this.abortVend())
         return { result: 'timeout', timestamp: new Date() }
       }
       if (resp.event === 'approved') {
         this.sessionOpen = true // funds reserved; finalise with confirmVend/cancelVend
+        recordNayax({ dir: 'INFO', note: 'APPROVED — funds reserved, awaiting dispense result' })
         return {
           result: 'approved',
           transactionId: `NAYAX-${Date.now()}`,
@@ -230,6 +234,7 @@ export class NayaxController extends EventEmitter {
         }
       }
       // denied or session ended without approval
+      recordNayax({ dir: 'INFO', note: `DECLINED/ENDED (reader sent "${resp.event}") — closing session` })
       await this.safe(() => this.endSession())
       return { result: 'declined', timestamp: new Date() }
     } catch (e) {
@@ -336,6 +341,7 @@ export class NayaxController extends EventEmitter {
       if (bytes.length === 0) continue
       const event = classifyReply(bytes)
       console.log(`[Nayax] RX ${toHex(bytes)} (${event})`)
+      recordNayax({ dir: 'RX', hex: toHex(bytes), event })
       this.inbox.push({ event, bytes })
       if (this.inbox.length > 30) this.inbox.shift()
       this.flushWaiter()
@@ -381,6 +387,7 @@ export class NayaxController extends EventEmitter {
   private async sendCmd(bytes: readonly number[]): Promise<void> {
     if (!this.port) throw new Error('Nayax serial port not open')
     console.log(`[Nayax] TX ${toHex(bytes)}`)
+    recordNayax({ dir: 'TX', hex: toHex(bytes) })
     await new Promise<void>((resolve, reject) =>
       this.port!.write(Buffer.from([...bytes]), (err) => (err ? reject(err) : resolve()))
     )
@@ -403,6 +410,7 @@ export class NayaxController extends EventEmitter {
     if (this.cancellingStray || this.saleInProgress) return
     this.cancellingStray = true
     console.log('[Nayax] stray session (start button / early tap) — closing with session-complete')
+    recordNayax({ dir: 'INFO', note: 'STRAY SESSION detected (reader start-button / early tap, no sale active) — closing with session-complete' })
     await this.safe(async () => {
       // The reader opened a bare session (no vend requested). The ONLY valid way
       // to dismiss it is SESSION_COMPLETE (13 04) — NOT vend-cancel (13 01), which

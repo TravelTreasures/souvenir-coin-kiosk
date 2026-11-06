@@ -31,7 +31,8 @@ const EMPTY = {
   transactions: [], // { id, kioskId, transactionId, amount, coinSelected, paymentResult, dispenseResult, createdAt }
   alerts: [], // { id, kioskId, transactionId, coinSelected, amount, dispenseResult, createdAt, resolved }
   maintenance: [], // { id, kioskId, note, by, createdAt }
-  releases: [] // { id, version, channel, notes, isDefault, createdAt, createdBy } — OTA build registry
+  releases: [], // { id, version, channel, notes, isDefault, createdAt, createdBy } — OTA build registry
+  nayaxLogs: {} // kioskId -> { at, entries:[{at,dir,hex,event,note}] } — reader serial trace (diagnostics)
 }
 
 let db = structuredClone(EMPTY)

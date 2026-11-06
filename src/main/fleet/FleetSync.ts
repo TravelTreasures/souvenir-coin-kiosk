@@ -18,6 +18,7 @@ import { getConfig, updateConfig, setPriceCents } from '../config/Config'
 import { getTransactionsSince, getHopperEventsSince, pruneSyncedTransactions, pruneSyncedHopperEvents, setHopperCount, insertHopperEvent } from '../database/Database'
 import { HopperController } from '../hopper/HopperController'
 import type { NayaxController } from '../nayax/NayaxController'
+import { getNayaxLog } from '../nayax/nayaxLog'
 import { runUpdateTick, getUpdateReport } from '../update/UpdateController'
 
 // Local-retention bookkeeping: prune at most once a day.
@@ -61,6 +62,8 @@ function resolveSyncIntervalMs(): number {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
+// Signature of the Nayax logbook last pushed, so an unchanged buffer isn't re-sent.
+let lastNayaxSig = ''
 
 export function startFleetSync(mdb: HopperController, nayax: NayaxController): void {
   // Allow first-run provisioning via env vars.
@@ -331,6 +334,23 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         updateError: ota.updateError
       })
     })
+  } catch {
+    /* offline — retry next tick */
+  }
+
+  // 3b. Nayax logbook: push the reader's recent serial trace so it can be read
+  //     from Fleet Admin (diagnostics). Only push when it changed since last time.
+  try {
+    const log = getNayaxLog()
+    const sig = log.length + '|' + (log.length ? log[log.length - 1].at : '')
+    if (log.length && sig !== lastNayaxSig) {
+      const res = await fetch(`${base}/api/ingest/nayax-log`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ entries: log })
+      })
+      if (res.ok) lastNayaxSig = sig
+    }
   } catch {
     /* offline — retry next tick */
   }
