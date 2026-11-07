@@ -1,6 +1,6 @@
 {
   "name": "souvenir-coin-kiosk",
-  "version": "1.21.15",
+  "version": "1.21.16",
   "description": "Souvenir coin kiosk application — ccTalk hopper dispensing (SuzoHapp Flow Hopper via 107-0251) and Nayax payment integration",
   "author": "Luis Ervedosa <l.ervedosa@gmail.com>",
   "homepage": "https://souvenircoinkiosk.local",
@@ -105,22 +105,16 @@
     "linux": {
       "target": [
         {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
+          "target": "AppImage"
         },
         {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
+          "target": "deb"
         }
       ],
       "category": "Utility",
       "maintainer": "Luis Ervedosa <l.ervedosa@gmail.com>",
       "icon": "build/icons",
-      "artifactName": "${productName}.${ext}"
+      "artifactName": "${productName}-${arch}.${ext}"
     },
     "deb": {
       "afterInstall": "build/deb-after-install.sh"

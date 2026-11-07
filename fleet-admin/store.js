@@ -32,7 +32,8 @@ const EMPTY = {
   alerts: [], // { id, kioskId, transactionId, coinSelected, amount, dispenseResult, createdAt, resolved }
   maintenance: [], // { id, kioskId, note, by, createdAt }
   releases: [], // { id, version, channel, notes, isDefault, createdAt, createdBy } — OTA build registry
-  nayaxLogs: {} // kioskId -> { at, entries:[{at,dir,hex,event,note}] } — reader serial trace (diagnostics)
+  nayaxLogs: {}, // kioskId -> { at, entries:[{at,dir,hex,event,note}] } — reader serial trace (diagnostics)
+  txArchive: {} // kioskId -> { 'YYYY-MM': { totalSales, totalRevenue, coin1/2/comboSales, coin1/2/comboRevenue, monthStart, monthEnd } } — rolled-up old sales
 }
 
 let db = structuredClone(EMPTY)

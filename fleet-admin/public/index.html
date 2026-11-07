@@ -103,7 +103,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.14</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.18</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -165,30 +165,39 @@ function go(v){view=v;render()}
 // Friendly per-kiosk coin name, falling back to "Coin 1/2" when unset.
 function coinName(k,s){if(s==3)return 'Combo (Coin 1 + Coin 2)';return (k&&(s==1?k.coin1Name:k.coin2Name))||('Coin '+s)}
 function copyNayax(){const t=window._nayaxText||'';if(navigator.clipboard){navigator.clipboard.writeText(t).catch(()=>{});}}
-// Live-update just the sync badge on the Coin Images page (that page is skipped
-// by the full auto-refresh so the file picker isn't disturbed, which otherwise
-// left the badge frozen on "Pending sync" after the kiosk had already caught up).
-async function refreshImagesBadge(){
-  const el=document.getElementById('imgSyncBadge');
-  if(!el||!_imgKiosk) return;
-  try{
-    const kiosks=await api('/api/kiosks');
-    const k=kiosks.find(x=>x.id===_imgKiosk);
-    if(!k) return;
-    el.innerHTML=k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending sync</span>';
-  }catch(e){/* leave as-is */}
+// ONE consistent config-sync badge, used everywhere we push settings to a kiosk:
+// amber "● Applying…" with when it was sent, until the kiosk confirms; then green
+// "✓ Up to date" with when it actually applied. compact=true drops the timestamps.
+function syncBadge(k,compact){
+  if(k.synced) return `<span class="pill on" title="Kiosk is running the current settings (config v${k.configVersion})">✓ Up to date${!compact&&k.configAppliedAt?' · applied '+ago(k.configAppliedAt):''}</span>`;
+  return `<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)" title="Sent to the kiosk — waiting for it to apply on its next sync (server v${k.configVersion} / kiosk v${k.appliedConfigVersion})">● Applying…${!compact&&k.lastConfigUpdate?' · sent '+ago(k.lastConfigUpdate):''}</span>`;
 }
+// Any element marked class="js-syncbadge" data-k="<kioskId>" [data-c="1"] is kept
+// live by the refresh loop below — so EVERY place that pushes settings shows the
+// same precise Applying…→Up to date badge, on any page, without navigating away.
+async function refreshSyncBadges(){
+  const els=document.querySelectorAll('.js-syncbadge'); if(!els.length) return;
+  let kiosks; try{ kiosks=await api('/api/kiosks'); }catch(e){ return; }
+  const map={}; kiosks.forEach(k=>map[k.id]=k);
+  els.forEach(el=>{ const k=map[el.dataset.k]; if(!k) return; const html=syncBadge(k,el.dataset.c==='1'); if(el.innerHTML!==html) el.innerHTML=html; });
+}
+// Format a stored UTC ISO timestamp in the viewer's LOCAL time (the logs are
+// recorded in UTC; this shows them in your timezone). withDate adds the date.
+function nxLocal(iso,withDate){const d=new Date(iso);if(isNaN(d))return (iso||'').replace('T',' ');const p=n=>String(n).padStart(2,'0');const t=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,'0')}`;return withDate?`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${t}`:t;}
 function refresh(){
   if(!token) return;
-  // The Coin Images page is skipped below, but keep its sync badge fresh.
-  if(view.name==='images'){ refreshImagesBadge(); return; }
+  // Keep every config-sync badge (kiosk header, pricing, coin images, …) live on
+  // any page — even ones skipped below — so "Applying…→Up to date" is consistent.
+  refreshSyncBadges();
+  // The Updates page is skipped below (deploy form), but keep the status table live.
+  if(view.name==='updates'){ const ae2=document.activeElement; if(!(ae2 && /^(INPUT|SELECT|TEXTAREA)$/.test(ae2.tagName))) refreshUpdatesStatus(); return; }
   // Don't auto-rebuild while the user is editing a field (it would wipe input).
   const ae=document.activeElement;
   if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
   // Skip views with charts, file pickers, or editing forms to avoid flicker /
   // losing a selected file or half-filled form (these config screens don't need
   // an 8-second live refresh).
-  if(view.name==='global' || view.name==='images' || view.name==='users' || view.name==='operators' || view.name==='destinations' || view.name==='pricing' || view.name==='updates' || (view.name==='kiosk' && ['overview','sales','transactions','marketing','inventory','refill'].includes(kioskTab))) return;
+  if(view.name==='global' || view.name==='images' || view.name==='users' || view.name==='operators' || view.name==='destinations' || view.name==='pricing' || view.name==='updates' || (view.name==='kiosk' && ['overview','sales','transactions','marketing','inventory'].includes(kioskTab))) return;
   // Preserve the scroll position across the rebuild so an auto-refresh doesn't
   // jump the page back to the top while the user is reading further down.
   const y=window.scrollY;
@@ -232,7 +241,7 @@ async function renderAudit(el){
     <div class="card"><table>
       <thead><tr><th>When</th><th>User</th><th>Role</th><th>Action</th></tr></thead>
       <tbody>${rows.length?rows.map(e=>`<tr>
-        <td class="dim">${esc(e.at.replace('T',' ').substring(0,19))}</td>
+        <td class="dim">${esc(nxLocal(e.at,true))}</td>
         <td>${esc(e.user)}</td>
         <td class="dim">${esc(e.role)}</td>
         <td class="mono">${esc(auditLabel(e))}</td>
@@ -386,7 +395,7 @@ async function renderImages(el){
         ${kiosks.map(x=>`<option value="${x.id}" ${x.id===_imgKiosk?'selected':''}>${esc(x.name)}</option>`).join('')}
       </select>
       ${k?`<span class="muted">${esc(k.location||k.destination)}</span>`:''}
-      <span id="imgSyncBadge">${k?(k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending sync</span>'):''}</span>
+      ${k?`<span class="js-syncbadge" data-k="${k.id}">${syncBadge(k)}</span>`:''}
     </div>
     ${k?slotBlock(1)+slotBlock(2):'<div class="empty">No kiosks yet. Add one from the Fleet view.</div>'}
     <div class="card">
@@ -527,7 +536,12 @@ async function renderUpdates(el){
 
    <div class="card"><table>
      <thead><tr><th>Kiosk</th><th>Current</th><th>Target</th><th>Status</th><th>Window</th><th>Last update</th><th>Actions</th></tr></thead>
-     <tbody>${kiosks.map(k=>`<tr>
+     <tbody id="otaStatusBody">${otaStatusRows(kiosks)}</tbody>
+   </table><p class="muted" style="font-size:.75rem;margin-top:8px">* = this kiosk has its own window override. Status updates arrive with each kiosk heartbeat.</p></div>`;
+}
+// OTA status rows — reused by the full render AND the live status-only refresh.
+function otaStatusRows(kiosks){
+  return kiosks.map(k=>`<tr>
        <td><b>${esc(k.name)}</b><div class="dim">${esc(k.location||'')}</div></td>
        <td class="mono">${esc(k.currentVersion||'—')}</td>
        <td class="mono">${k.targetVersion?esc(k.targetVersion):'<span class="dim">—</span>'}</td>
@@ -539,8 +553,13 @@ async function renderUpdates(el){
          <button class="ghost" onclick="rollbackOta('${esc(k.id)}')">Rollback</button>
          <button class="ghost" onclick="windowOta('${esc(k.id)}')">Window</button>
        </div></td>
-     </tr>`).join('')||'<tr><td colspan="7" class="muted">No kiosks yet.</td></tr>'}</tbody>
-   </table><p class="muted" style="font-size:.75rem;margin-top:8px">* = this kiosk has its own window override. Status updates arrive with each kiosk heartbeat.</p></div>`;
+     </tr>`).join('')||'<tr><td colspan="7" class="muted">No kiosks yet.</td></tr>';
+}
+// Live-update ONLY the OTA status table (leaves the deploy/registry forms alone),
+// so Current/Target/Status flip to "successful" without navigating away.
+async function refreshUpdatesStatus(){
+  const b=document.getElementById('otaStatusBody'); if(!b) return;
+  try{ const kiosks=await api('/api/kiosks'); const html=otaStatusRows(kiosks); if(b.innerHTML!==html) b.innerHTML=html; }catch(e){}
 }
 async function saveOta(){
   const body={otaFeedUrl:document.getElementById('ota_feed').value.trim(),otaChannel:document.getElementById('ota_channel').value.trim()||'stable',otaWindowStart:document.getElementById('ota_ws').value.trim(),otaWindowEnd:document.getElementById('ota_we').value.trim(),otaWindowEnabled:document.getElementById('ota_en').checked};
@@ -683,7 +702,7 @@ async function renderPricing(el){
         <td>${esc(k.name)}<div class="muted">${esc(k.location||k.destination)}</div></td>
         <td><b>${rand(k.coinPriceCents)}</b></td>
         <td>${admin()?`<div class="row"><span class="dim">R</span><input type="number" min="0" step="1" id="p_${k.id}" value="${(k.coinPriceCents/100).toFixed(2)}" style="width:100px"/><button class="ghost" onclick="setPriceRow('${k.id}')">Apply</button><span id="m_${k.id}" class="ok"></span></div>`:'<span class="muted">view only</span>'}</td>
-        <td>${k.synced?'<span class="pill on">✓ Synced</span>':'<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)">● Pending</span>'}</td>
+        <td><span class="js-syncbadge" data-k="${k.id}">${syncBadge(k)}</span></td>
       </tr>`).join('')}
       </tbody>
     </table></div>`;
@@ -798,9 +817,7 @@ async function renderKiosk(el,id,isAuto){
     <div class="row between">
       <div><h2 style="font-size:1.4rem">${esc(k.name)}</h2><div class="muted">${esc(k.location)} · ${esc(k.destination?.name||'')}</div></div>
       <div class="row" style="gap:8px;align-items:center">
-        ${k.synced
-          ? `<span class="pill on" title="Kiosk is running the current settings (config v${k.configVersion})">✓ Up to date</span>`
-          : `<span class="pill" style="background:rgba(224,160,32,.15);color:var(--amber)" title="Server has config v${k.configVersion}, kiosk is on v${k.appliedConfigVersion} — it will apply on the next sync">● Changes pending</span>`}
+        <span class="js-syncbadge" data-k="${k.id}">${syncBadge(k)}</span>
         <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
       </div>
     </div>
@@ -1037,7 +1054,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
     c.dataset.nsig=_nsig;
     const col=d=>d==='TX'?'var(--gold-l)':d==='RX'?'#7fd1a0':'var(--amber)';
     const rows=entries.map(e=>{
-      const t=(e.at||'').replace('T',' ').substring(11,23);
+      const t=nxLocal(e.at,false);
       const body=e.dir==='INFO'?esc(e.note||''):(e.hex||'')+(e.event?('  <span class="dim">('+esc(e.event)+')</span>'):'');
       return `<tr><td class="dim" style="white-space:nowrap">${t}</td><td style="color:${col(e.dir)};font-weight:700">${e.dir}</td><td class="mono" style="font-size:.82rem">${e.dir==='INFO'?esc(e.note||''):('<span class="mono">'+esc(e.hex||'')+'</span>'+(e.event?' <span class="dim">('+esc(e.event)+')</span>':''))}</td></tr>`;
     }).join('');
@@ -1047,7 +1064,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
         <div class="row" style="gap:8px"><span class="muted">${entries.length} lines${log&&log.at?' · updated '+ago(log.at):''}</span><button class="ghost" onclick="copyNayax()">Copy all</button></div>
       </div>
       ${entries.length?`<div style="max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:10px"><table style="width:100%"><tbody>${rows}</tbody></table></div>`:'<div class="empty">No Nayax activity recorded yet. Do a transaction on the kiosk and it will appear here within ~20 seconds.</div>'}`;
-    window._nayaxText=entries.map(e=>`${(e.at||'').replace('T',' ').substring(0,23)} ${e.dir} ${e.dir==='INFO'?(e.note||''):((e.hex||'')+(e.event?' ('+e.event+')':''))}`).join('\n');
+    window._nayaxText=entries.map(e=>`${nxLocal(e.at,true)} ${e.dir} ${e.dir==='INFO'?(e.note||''):((e.hex||'')+(e.event?' ('+e.event+')':''))}`).join('\n');
   }
   else if(kioskTab==='maintenance'){
     const m=await api('/api/kiosks/'+id+'/maintenance');

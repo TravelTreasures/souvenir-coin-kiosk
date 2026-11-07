@@ -1,13 +1,14 @@
 name: Build & publish kiosk (OTA feed)
 
 # Triggers:
-#   • push a tag like v1.20.0  → builds the Linux AppImage and publishes it +
-#     the update feed (stable-linux.yml + .blockmap) to a GitHub Release.
+#   • push a tag like v1.20.0  → builds the Linux AppImages (x86-64 AND arm64)
+#     and publishes them + the per-arch update feeds to a single GitHub Release.
 #   • manual run (workflow_dispatch) for testing.
 #
-# The kiosks then read that release as their OTA feed via:
-#   https://github.com/<OWNER>/<REPO>/releases/latest/download/
-# (set that URL on the dashboard → Updates → Feed URL).
+# Mixed fleet: x86 mini-PCs install Souvenir-Coin-Kiosk-x64.AppImage and read
+# stable-linux.yml; Raspberry Pi 5 (arm64) installs Souvenir-Coin-Kiosk-arm64.AppImage
+# and reads stable-linux-arm64.yml. electron-updater on each kiosk automatically
+# requests only its own architecture's feed, so one "Deploy 1.21.x" updates both.
 #
 # No secrets to configure: GITHUB_TOKEN is provided automatically; the
 # permissions block below lets it create the release.
@@ -23,7 +24,15 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.arch }}
+    strategy:
+      # Build both arches even if one fails, so a problem on one doesn't block the other.
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest,    arch: x64 }    # x86-64 mini-PCs
+          - { runner: ubuntu-24.04-arm, arch: arm64 }  # Raspberry Pi 5
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,15 +45,18 @@ jobs:
 
       # serialport / better-sqlite3 are native modules; libudev-dev is needed to
       # build serialport on Linux. build-essential + python3 ship on the runner.
+      # On the arm64 runner this installs the arm64 libs, so the native modules
+      # are compiled natively for aarch64 (no cross-compilation / QEMU needed).
       - name: Install native build deps
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
 
       - name: Install dependencies
-        # npm install (not npm ci) so a lockfile that's slightly behind
-        # package.json still resolves and is updated, rather than failing.
         run: npm install
 
-      - name: Build & publish AppImage + update feed to GitHub Releases
+      - name: Build renderer/main
+        run: npm run build
+
+      - name: Package & publish AppImage (${{ matrix.arch }}) + update feed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run publish:linux
+        run: npx --no-install electron-builder --linux AppImage --${{ matrix.arch }} --publish always

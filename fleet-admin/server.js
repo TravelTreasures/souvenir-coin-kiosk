@@ -173,7 +173,10 @@ const logIngest = (kioskId, dir, kind, detail) => {
 function logAudit(sess, method, path) {
   const a = data().audit
   a.push({ id: nextId('audit'), at: new Date().toISOString(), user: sess.username, role: sess.role, method, path })
-  if (a.length > 2000) data().audit = a.slice(-2000)
+  // Time-based retention (same ~90-day window as transactions) is the real policy
+  // — see pruneOldTransactions(). This large cap is just a runaway safety net so
+  // the log stays bounded even if the daily cleanup ever misses.
+  if (a.length > 20000) data().audit = a.slice(-20000)
 }
 
 /** Resolve a kiosk's assigned coin images to { slot: { id, url } } for sync. */
@@ -218,7 +221,7 @@ function salesBetween(kioskId, from, to) {
   )
   // coinSelected 3 = Combo Sale (one of each coin). totals already include it;
   // it's broken out separately below so per-coin figures aren't skewed.
-  return {
+  const out = {
     totalSales: rows.length,
     totalRevenue: rows.reduce((a, r) => a + r.amount, 0),
     coin1Sales: rows.filter((r) => r.coinSelected === 1).length,
@@ -228,6 +231,21 @@ function salesBetween(kioskId, from, to) {
     comboSales: rows.filter((r) => r.coinSelected === 3).length,
     comboRevenue: rows.filter((r) => r.coinSelected === 3).reduce((a, r) => a + r.amount, 0)
   }
+  // Add rolled-up archive for whole months that fall entirely inside [from,to]
+  // (old sales whose raw rows were pruned). Archived months are always older than
+  // the live window, so today/week/month reports never touch them — only long
+  // ranges / "all time" do, keeping those totals correct after retention.
+  const arch = (data().txArchive || {})[kioskId]
+  if (arch) {
+    for (const b of Object.values(arch)) {
+      if (from <= b.monthStart && b.monthEnd <= to) {
+        out.totalSales += b.totalSales; out.totalRevenue += b.totalRevenue
+        out.coin1Sales += b.coin1Sales; out.coin2Sales += b.coin2Sales; out.comboSales += b.comboSales
+        out.coin1Revenue += b.coin1Revenue; out.coin2Revenue += b.coin2Revenue; out.comboRevenue += b.comboRevenue
+      }
+    }
+  }
+  return out
 }
 
 function salesFor(kioskId, period) {
@@ -348,6 +366,7 @@ function kioskSummary(k) {
     appliedConfigVersion: k.appliedConfigVersion ?? 0,
     synced: (k.configVersion ?? 1) === (k.appliedConfigVersion ?? 0),
     lastConfigUpdate: k.lastConfigUpdate || null,
+    configAppliedAt: k.configAppliedAt || null,
     coinImages: coinImagesFor(k),
     tags: k.tags || [],
     coin1Name: k.coin1Name || '',
@@ -394,6 +413,61 @@ function purgeOldRefills() {
     }
   }
   if (changed) save()
+}
+
+// ---- Transaction retention -------------------------------------------------
+// Keep raw transactions for the last N days (default 90) so the dashboard's
+// today/week/month reports stay exact, then ROLL older completed sales into a
+// tiny per-kiosk/per-month archive and drop the raw rows. This keeps fleet.json
+// bounded for a 20+ kiosk fleet without a database. Tunable via env.
+const TX_RETENTION_DAYS = Math.max(30, Number(process.env.FLEET_TX_RETENTION_DAYS) || 90)
+let lastTxPruneDay = ''
+
+/** Cutoff timestamp (norm 'YYYY-MM-DD HH:MM:SS') = now - retention days. */
+function retentionCutoff() {
+  const d = new Date(); d.setDate(d.getDate() - TX_RETENTION_DAYS)
+  return norm(d.toISOString())
+}
+
+/** Once a day, archive + drop transactions older than the retention window, and
+ *  trim resolved alerts / audit rows that are older than the same cutoff. */
+function pruneOldTransactions() {
+  const today = norm(new Date().toISOString()).substring(0, 10)
+  if (today === lastTxPruneDay) return // once per day is plenty
+  lastTxPruneDay = today
+  const cutoff = retentionCutoff()
+  const d = data()
+  if (!d.txArchive) d.txArchive = {}
+  const keep = []
+  let archived = 0
+  for (const t of d.transactions) {
+    if (norm(t.createdAt) >= cutoff) { keep.push(t); continue }
+    // Old row: fold a COMPLETED sale into the monthly archive (reports only ever
+    // count approved+dispensed as sales). Non-sales old rows are simply dropped.
+    if (t.paymentResult === 'approved' && t.dispenseResult === 'success') {
+      const ym = norm(t.createdAt).substring(0, 7)
+      const byK = d.txArchive[t.kioskId] || (d.txArchive[t.kioskId] = {})
+      const b = byK[ym] || (byK[ym] = {
+        totalSales: 0, totalRevenue: 0, coin1Sales: 0, coin2Sales: 0, comboSales: 0,
+        coin1Revenue: 0, coin2Revenue: 0, comboRevenue: 0,
+        monthStart: `${ym}-01 00:00:00`, monthEnd: `${ym}-31 23:59:59`
+      })
+      const amt = t.amount || 0
+      b.totalSales++; b.totalRevenue += amt
+      if (t.coinSelected === 1) { b.coin1Sales++; b.coin1Revenue += amt }
+      else if (t.coinSelected === 2) { b.coin2Sales++; b.coin2Revenue += amt }
+      else if (t.coinSelected === 3) { b.comboSales++; b.comboRevenue += amt }
+    }
+    archived++
+  }
+  if (archived > 0) {
+    d.transactions = keep
+    // Resolved alerts and audit rows also grow without bound — trim old ones.
+    if (Array.isArray(d.alerts)) d.alerts = d.alerts.filter((a) => !a.resolved || norm(a.createdAt) >= cutoff)
+    if (Array.isArray(d.audit)) d.audit = d.audit.filter((x) => norm(x.at) >= cutoff)
+    save()
+    console.log(`[fleet] tx retention: folded+dropped ${archived} rows older than ${TX_RETENTION_DAYS}d (archive kept)`)
+  }
 }
 
 /** Apply any scheduled price changes whose time has arrived. */
@@ -477,8 +551,15 @@ const server = createServer(async (req, res) => {
           nayaxConnected: !!b.nayaxConnected,
           appVersion: b.appVersion ?? kiosk.appVersion
         }
-        // Record which config version the kiosk has actually applied (confirmation).
-        if (typeof b.appliedConfigVersion === 'number') kiosk.appliedConfigVersion = b.appliedConfigVersion
+        // Record which config version the kiosk has actually applied (confirmation),
+        // and stamp WHEN it caught up to the current version, so the dashboard can
+        // show a precise "applied X ago" instead of just a pending/done flag.
+        if (typeof b.appliedConfigVersion === 'number') {
+          const prevApplied = kiosk.appliedConfigVersion ?? 0
+          const want = kiosk.configVersion ?? 1
+          kiosk.appliedConfigVersion = b.appliedConfigVersion
+          if (prevApplied < want && b.appliedConfigVersion >= want) kiosk.configAppliedAt = new Date().toISOString()
+        }
         // Confirm the remote refill landed. Once applied, clear the pending command
         // so the dashboard shows it as done (the refill event syncs back separately).
         if (typeof b.appliedRefillVersion === 'number') {
@@ -641,8 +722,9 @@ const server = createServer(async (req, res) => {
     const isAdmin = sess.role === 'admin'
     const requireAdmin = () => { json(res, 403, { error: 'Admin role required' }); return false }
 
-    // Audit trail: record admin mutations (skip GETs and the audit/backup reads).
-    if (isAdmin && req.method !== 'GET') logAudit(sess, req.method, path)
+    // Audit trail: record every change (skip GET reads). Covers admin config
+    // changes AND operator refills, so the log shows who did what.
+    if (req.method !== 'GET' && (isAdmin || sess.role === 'operator')) logAudit(sess, req.method, path)
 
     // Current user
     if (req.method === 'GET' && path === '/api/me') {
@@ -1367,7 +1449,7 @@ function serveImage(name, res) {
 }
 
 // Fleet health monitoring + scheduled changes — run on boot and every 60s.
-const tick = () => { applyDueSchedules(); monitorFleet(); purgeOldRefills() }
+const tick = () => { applyDueSchedules(); monitorFleet(); purgeOldRefills(); pruneOldTransactions() }
 tick()
 setInterval(tick, 60_000)
 // Apply due price schedules more often so a change fires within ~15s of its set
