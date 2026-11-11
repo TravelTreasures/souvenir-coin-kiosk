@@ -47,8 +47,21 @@ jobs:
       # build serialport on Linux. build-essential + python3 ship on the runner.
       # On the arm64 runner this installs the arm64 libs, so the native modules
       # are compiled natively for aarch64 (no cross-compilation / QEMU needed).
+      # NOTE: this step must never fail the build on its own. GitHub's Ubuntu
+      # package mirrors are sometimes unreachable, which made "apt-get" exit with
+      # code 100 and failed BOTH builds before any of our code was compiled.
+      # Now: skip if the library is already there, use short timeouts, and carry
+      # on with a warning if the mirror is down (serialport and better-sqlite3
+      # normally use their prebuilt binaries, so the build can still succeed).
       - name: Install native build deps
-        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+        run: |
+          if dpkg -s libudev-dev >/dev/null 2>&1; then
+            echo "libudev-dev already installed - skipping apt"
+            exit 0
+          fi
+          APT_OPTS="-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          sudo apt-get $APT_OPTS update || echo "::warning::apt-get update failed (package mirror problem) - trying install anyway"
+          sudo apt-get $APT_OPTS install -y libudev-dev || echo "::warning::could not install libudev-dev - continuing without it"
 
       - name: Install dependencies
         run: npm install
