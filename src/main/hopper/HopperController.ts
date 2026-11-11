@@ -56,9 +56,12 @@ interface HopperRuntime extends HopperState {
 
 // Software-tracked hopper state (shared by simulation and production — the count
 // is never read from the hopper, it's maintained here + in the DB).
+// A brand-new kiosk starts with ZERO coins: the hoppers are filled on site and the
+// count is entered then (Admin → Refill, or Fleet Admin → Refill), according to
+// how busy the site is. The saved count is restored from the DB at start-up.
 const hoppers: Record<number, HopperRuntime> = {
-  [H1]: { address: H1, status: 'ok', coinCount: 500 },
-  [H2]: { address: H2, status: 'ok', coinCount: 500 }
+  [H1]: { address: H1, status: 'empty', coinCount: 0 },
+  [H2]: { address: H2, status: 'empty', coinCount: 0 }
 }
 
 // ------------------------------------------------------------------

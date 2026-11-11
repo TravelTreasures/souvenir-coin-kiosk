@@ -259,10 +259,15 @@ app.whenReady().then(async () => {
   for (const id of [1, 2] as const) {
     const addr = id === 1 ? HopperController.HOPPER_1_ADDR : HopperController.HOPPER_2_ADDR
     const dbCount = getHopperCount(id)
-    if (dbCount > 0) {
-      simSetHopperCoinCount(addr, dbCount)
+    if (dbCount <= 0 && USE_SIMULATION) {
+      // Bench/dev simulation only: start with stock so the simulator can sell.
+      simSetHopperCoinCount(addr, 500)
+      setHopperCount(id, 500)
     } else {
-      setHopperCount(id, mdb.getCoinCount(addr))
+      // Real kiosk: the DB is the single source of truth — INCLUDING zero. A new
+      // kiosk starts at 0 until it is refilled on site, and an emptied hopper
+      // stays empty across restarts (it used to come back as 500).
+      simSetHopperCoinCount(addr, dbCount)
     }
   }
 
