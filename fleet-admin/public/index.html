@@ -17,8 +17,11 @@
   .brand{font-size:1.15rem;font-weight:800;color:var(--gold-l)}
   .brand small{color:var(--dim);font-weight:500;font-size:.8rem;margin-left:8px}
   .wrap{max-width:1200px;margin:0 auto;padding:24px 28px}
-  .crumbs{color:var(--dim);font-size:.85rem;margin-bottom:18px}
-  .crumbs a{color:var(--gold-l);cursor:pointer}
+  .crumbs{color:var(--dim);font-size:.9rem;margin-bottom:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  /* "← Fleet" is a real button (it used to look like plain text). */
+  .crumbs a{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid rgba(201,162,39,.45);border-radius:10px;background:rgba(201,162,39,.10);color:var(--gold-l);font-weight:600;cursor:pointer;text-decoration:none;user-select:none;transition:background .15s,border-color .15s}
+  .crumbs a:hover{background:rgba(201,162,39,.22);border-color:var(--gold-l)}
+  .crumbs a:active{transform:translateY(1px)}
   .grid{display:grid;gap:16px}
   .cards{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
   .metrics{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
@@ -103,7 +106,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.19</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.22</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -1142,7 +1145,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
       ${rec.coins.map(c2=>`<tr><td>${esc(coinName(k,c2.slot))}</td><td>${c2.paid}</td><td>${rand(c2.paidRevenue)}</td><td class="ok">${c2.dispensed}</td><td class="${c2.notDispensed?'err':'dim'}">${c2.notDispensed}</td><td class="${c2.refundOwed?'err':'dim'}">${rand(c2.refundOwed)}</td><td>${c2.coinsOut??'—'}</td><td>${c2.refillsAdded??'—'}</td></tr>`).join('')}
       <tr style="font-weight:700"><td>Total</td><td>${rec.coins.reduce((a,x)=>a+x.paid,0)}</td><td>${rand(rec.coins.reduce((a,x)=>a+x.paidRevenue,0))}</td><td class="ok">${rec.coins.reduce((a,x)=>a+x.dispensed,0)}</td><td>${rec.coins.reduce((a,x)=>a+x.notDispensed,0)}</td><td>${rand(rec.coins.reduce((a,x)=>a+x.refundOwed,0))}</td><td>${rec.coins.reduce((a,x)=>a+(x.coinsOut||0),0)}</td><td>${rec.coins.reduce((a,x)=>a+(x.refillsAdded||0),0)}</td></tr>
       </tbody></table>
-      <p class="muted" style="font-size:.8rem;margin-top:10px">"Not dispensed" = paid but coin not released (refund owed). "Refund owed" = paid revenue minus dispensed value. A Combo is one payment that releases one of each coin; "Coins out of hopper" = single sales + combos.</p>
+      <p class="muted" style="font-size:.8rem;margin-top:10px">"Paid" counts every approved card payment; "Dispensed" only those where the coin was confirmed. "Not dispensed" = paid but coin not confirmed released (refund owed), so Sales revenue = Paid revenue − Refund owed. "Refund owed" = paid revenue minus dispensed value. A Combo is one payment that releases one of each coin; "Coins out of hopper" = single sales + combos.</p>
       </div>
       <h3 style="font-size:1.05rem;margin:22px 0 10px">Hopper maintenance (reported by kiosk)</h3>
       <div class="card">
@@ -1158,7 +1161,7 @@ function hopper(label,h){if(!h)return `<div class="row between" style="padding:8
 function txTable(rows,k){
   if(!rows.length)return '<div class="empty">No transactions.</div>';
   return '<table><thead><tr><th>Date/Time</th><th>Transaction ID</th><th>Coin</th><th>Amount</th><th>Payment</th><th>Dispense</th></tr></thead><tbody>'+
-    rows.map(t=>`<tr><td class="dim">${esc((t.createdAt||'').substring(0,19))}</td><td class="mono">${esc(t.transactionId)}</td><td>${esc(coinName(k,t.coinSelected))}</td><td>${rand(t.amount)}</td><td class="${t.paymentResult==='approved'?'ok':'err'}">${esc(t.paymentResult)}</td><td class="${t.dispenseResult==='success'?'ok':(t.dispenseResult?'err':'dim')}">${esc(t.dispenseResult||'—')}</td></tr>`).join('')+'</tbody></table>';
+    rows.map(t=>`<tr><td class="dim">${esc((t.createdAt||'').substring(0,19))}</td><td class="mono">${esc(t.transactionId)}</td><td>${esc(coinName(k,t.coinSelected))}</td><td>${rand(t.amount)}</td><td class="${t.paymentResult==='approved'?'ok':'err'}">${esc(t.paymentResult)}</td><td class="${t.dispenseResult==='success'?'ok':((t.dispenseResult||t.paymentResult==='approved')?'err':'dim')}">${esc(t.dispenseResult||(t.paymentResult==='approved'?'not confirmed':'—'))}</td></tr>`).join('')+'</tbody></table>';
 }
 async function setStatus(id){const v=document.getElementById('opstat').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({operationalStatus:v})});document.getElementById('opmsg').textContent='Updated';setTimeout(()=>render(),600)}
 async function setDest(id){const v=document.getElementById('kdest').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({destinationId:v})});document.getElementById('kmetamsg').textContent='Destination saved';setTimeout(()=>render(),600)}

@@ -265,7 +265,19 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
   // 2. Push new transactions + hopper maintenance events since the last synced ids.
   try {
     const fresh = getConfig()
-    const txs = getTransactionsSince(fresh.lastSyncedTxId)
+    // Hold back a sale whose coin is still being dispensed. The row is written
+    // as "approved, result pending" the moment the card is accepted; if a sync
+    // lands in the second or two before the hopper finishes, the server would
+    // store it with NO dispense result and never hear the outcome (the kiosk
+    // only sends each row once). Send everything before it now and that sale on
+    // the next tick, complete. After 2 minutes it is sent regardless.
+    const allTxs = getTransactionsSince(fresh.lastSyncedTxId)
+    const inFlight = allTxs.findIndex((t) => {
+      if (t.paymentResult !== 'approved' || t.dispenseResult != null) return false
+      const made = new Date(String(t.createdAt || '').replace(' ', 'T')).getTime()
+      return Number.isFinite(made) && Date.now() - made < 120_000
+    })
+    const txs = inFlight === -1 ? allTxs : allTxs.slice(0, inFlight)
     const events = getHopperEventsSince(fresh.lastSyncedHopperEventId ?? 0)
     if (txs.length || events.length) {
       const transactions = txs.map((t) => ({

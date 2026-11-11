@@ -17,7 +17,7 @@ import { randomBytes } from 'crypto'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { dirname, join, extname } from 'path'
 import { fileURLToPath } from 'url'
-import { load, save, data, nextId } from './store.js'
+import { load, save, saveSoon, data, nextId } from './store.js'
 import { seedIfEmpty } from './seed.js'
 import { hashPassword, verifyPassword, seedAdmin, findUser, listUsers, adminCount } from './users.js'
 
@@ -334,7 +334,7 @@ function reconcile(kiosk, from, to) {
       if (t.paymentResult === 'approved') {
         paid++; paidRevenue += t.amount
         if (t.dispenseResult === 'success') { dispensed++; dispensedRevenue += t.amount }
-        else if (t.dispenseResult) notDispensed++
+        else notDispensed++ // any paid sale without a confirmed coin — including no result at all
       }
     }
     const refillsAdded = data().hopperEvents
@@ -352,7 +352,7 @@ function reconcile(kiosk, from, to) {
       if (t.paymentResult === 'approved') {
         paid++; paidRevenue += t.amount
         if (t.dispenseResult === 'success') { dispensed++; dispensedRevenue += t.amount }
-        else if (t.dispenseResult) notDispensed++
+        else notDispensed++ // any paid sale without a confirmed coin — including no result at all
       }
     }
     if (paid > 0 || kiosk.comboEnabled === true) {
@@ -618,7 +618,7 @@ const server = createServer(async (req, res) => {
             // No configVersion bump — the change originated on the kiosk.
           }
         }
-        save()
+        saveSoon() // routine heartbeat: batched write (see store.js)
         logIngest(kiosk.id, 'in', 'heartbeat',
           `appliedV=${b.appliedConfigVersion ?? '?'} price=${b.coinPriceCents ?? '?'} ` +
           `hoppers=${b.hopper1?.coinCount ?? '-'}/${b.hopper2?.coinCount ?? '-'} ` +
@@ -634,23 +634,36 @@ const server = createServer(async (req, res) => {
         const d = data()
         if (!d.nayaxLogs) d.nayaxLogs = {}
         d.nayaxLogs[kiosk.id] = { at: new Date().toISOString(), entries }
-        save()
+        saveSoon() // diagnostics only: batched write
         return json(res, 200, { ok: true, stored: entries.length })
       }
       if (req.method === 'POST' && path === '/api/ingest/sync') {
         const b = await body(req)
         const incoming = Array.isArray(b.transactions) ? b.transactions : []
-        const existing = new Set(data().transactions.map((t) => `${t.kioskId}:${t.transactionId}`))
-        let added = 0
+        const existing = new Map(data().transactions.filter((t) => t.kioskId === kiosk.id).map((t) => [t.transactionId, t]))
+        const raiseAlert = (t) => {
+          if (data().alerts.some((a) => a.kioskId === kiosk.id && a.transactionId === t.transactionId)) return
+          data().alerts.push({ id: nextId('alerts'), kioskId: kiosk.id, transactionId: t.transactionId, coinSelected: t.coinSelected, amount: t.amount, dispenseResult: t.dispenseResult, createdAt: t.createdAt, resolved: false })
+        }
+        let added = 0, updated = 0
         for (const t of incoming) {
-          const dedupe = `${kiosk.id}:${t.transactionId}`
-          if (existing.has(dedupe)) continue
-          data().transactions.push({ id: nextId('transactions'), kioskId: kiosk.id, ...t })
-          existing.add(dedupe)
-          added++
-          if (t.paymentResult === 'approved' && t.dispenseResult && t.dispenseResult !== 'success') {
-            data().alerts.push({ id: nextId('alerts'), kioskId: kiosk.id, transactionId: t.transactionId, coinSelected: t.coinSelected, amount: t.amount, dispenseResult: t.dispenseResult, createdAt: t.createdAt, resolved: false })
+          const have = existing.get(t.transactionId)
+          if (have) {
+            // Already stored. If it arrived earlier WITHOUT a dispense result (it
+            // was pushed while the coin was still dropping, or the kiosk stopped
+            // mid-sale) and the kiosk now knows the outcome, fill it in.
+            if (have.dispenseResult == null && t.dispenseResult != null) {
+              have.dispenseResult = t.dispenseResult
+              updated++
+              if (have.paymentResult === 'approved' && t.dispenseResult !== 'success') raiseAlert({ ...have })
+            }
+            continue
           }
+          const rec = { id: nextId('transactions'), kioskId: kiosk.id, ...t }
+          data().transactions.push(rec)
+          existing.set(t.transactionId, rec)
+          added++
+          if (t.paymentResult === 'approved' && t.dispenseResult && t.dispenseResult !== 'success') raiseAlert(t)
         }
         // Hopper maintenance events (empty / refill) reported by the kiosk, for
         // central stock reconciliation. Deduped by the kiosk's local event id.
@@ -672,7 +685,7 @@ const server = createServer(async (req, res) => {
           }
         }
         save()
-        logIngest(kiosk.id, 'in', 'sync', `tx received=${incoming.length} new=${added} · hopperEvents new=${hAdded}`)
+        logIngest(kiosk.id, 'in', 'sync', `tx received=${incoming.length} new=${added} updated=${updated} · hopperEvents new=${hAdded}`)
         return json(res, 200, { ok: true, received: incoming.length, added, hopperEventsAdded: hAdded })
       }
 

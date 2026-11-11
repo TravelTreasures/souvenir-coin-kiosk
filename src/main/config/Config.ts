@@ -56,6 +56,9 @@ export interface KioskConfig {
   appliedConfigVersion: number
   /** Highest local transaction id already pushed to the fleet server. */
   lastSyncedTxId: number
+  /** One-time repair flag: recent transactions were re-sent once so the server
+   *  can fill in dispense results it had received blank (see index.ts). */
+  dispenseResyncDone?: boolean
   /** Highest local hopper-event id already pushed to the fleet server. */
   lastSyncedHopperEventId?: number
   /** Last sync outcome, for showing connection health in Admin → System. */

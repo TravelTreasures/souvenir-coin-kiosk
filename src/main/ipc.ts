@@ -89,6 +89,9 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
       }
     }
 
+    // Set once the card is approved, cleared once the dispense result is stored —
+    // so the catch below knows if money was taken with no outcome recorded.
+    let unresolvedTxId: string | null = null
     try {
       const timeoutMs = getTransactionTimeoutSeconds() * 1000
       const saleResponse = await nayax.requestSale(priceCents, timeoutMs)
@@ -108,6 +111,7 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
           nayaxCardType: saleResponse.cardType ?? null,
           alertSent: 0
         })
+        unresolvedTxId = transactionId
 
         if (isCombo) {
           // Dispense ONE of EACH coin. If the first fails, don't attempt the second.
@@ -118,6 +122,7 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
           setHopperCount(2, mdb.getCoinCount(H2))
           if (d1.success && d2.success) {
             updateDispenseResult(transactionId, 'success')
+            unresolvedTxId = null
             await nayax.confirmVend().catch(() => undefined)
             return { status: 'dispensed', transactionId }
           }
@@ -125,6 +130,7 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
           // for an incomplete pair).
           const errorCode = (!d1.success ? d1.error : d2.error) ?? 'unknown_error'
           updateDispenseResult(transactionId, mapDispenseCode(errorCode), 0)
+          unresolvedTxId = null
           logError('critical', 'dispense', 'Combo payment approved but a coin was not dispensed', { transactionId, coin1Ok: d1.success, coin2Ok: d2.success, error: errorCode })
           await nayax.cancelVend().catch(() => undefined)
           return { status: 'dispense_failed', errorCode, transactionId }
@@ -135,6 +141,7 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
 
         if (dispenseResult.success) {
           updateDispenseResult(transactionId, 'success')
+          unresolvedTxId = null
           // Sync coin count to DB
           const newCount = mdb.getCoinCount(hopperAddress)
           setHopperCount(coinSelected as 1 | 2, newCount)
@@ -145,6 +152,7 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
           // Payment taken but dispense failed – CRITICAL
           const errorCode = dispenseResult.error ?? 'unknown_error'
           updateDispenseResult(transactionId, mapDispenseCode(errorCode), 0)
+          unresolvedTxId = null
           logError('critical', 'dispense', 'Payment approved but coin not dispensed', {
             transactionId,
             coinSelected,
@@ -197,6 +205,18 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
+      if (unresolvedTxId) {
+        // The card was APPROVED but something failed before the coin outcome was
+        // recorded. Never leave that as "approved, result unknown": record it as
+        // a failed dispense and cancel the vend so the customer is not charged.
+        const txId = unresolvedTxId
+        unresolvedTxId = null
+        try { updateDispenseResult(txId, 'unknown_error', 0) } catch { /* ignore */ }
+        logError('critical', 'dispense', 'Payment approved but the sale failed before a coin was confirmed', { transactionId: txId, coinSelected, message: msg })
+        try { await nayax.cancelVend() } catch { /* ignore */ }
+        try { await nayax.cancelSale() } catch { /* ignore */ }
+        return { status: 'dispense_failed', errorCode: 'unknown_error', transactionId: txId }
+      }
       logError('error', 'nayax', 'Unexpected payment error', { message: msg })
       // Make sure the terminal is reset to idle even on an unexpected failure.
       try { await nayax.cancelSale() } catch { /* ignore */ }

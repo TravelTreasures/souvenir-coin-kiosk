@@ -6,7 +6,7 @@
  * production fleet, swap this module for PostgreSQL — the rest of the server
  * only talks to the helper functions below.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -51,16 +51,61 @@ export function load() {
   return db
 }
 
-export function save() {
+/**
+ * Write the dataset to disk NOW.
+ *  • Compact JSON (no indentation): roughly half the bytes, faster to write.
+ *  • Atomic: written to a temp file, then renamed over the real one — so a crash
+ *    or power cut mid-write can never leave fleet.json half-written (it holds
+ *    every kiosk, key and sale).
+ */
+function writeNow() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+  saveDeadline = 0
+  try {
+    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
+    const tmp = DATA_FILE + '.tmp'
+    writeFileSync(tmp, JSON.stringify(db), 'utf8')
+    renameSync(tmp, DATA_FILE)
+  } catch (err) {
+    console.error('[store] save failed:', err.message)
+  }
+}
+
+let saveDeadline = 0 // when the pending write is due (ms epoch); 0 = none pending
+
+function schedule(ms) {
+  const due = Date.now() + ms
+  // Never push an already-scheduled write further away; only pull it closer.
+  if (saveTimer && saveDeadline && saveDeadline <= due) return
   if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    try {
-      if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
-      writeFileSync(DATA_FILE, JSON.stringify(db, null, 2), 'utf8')
-    } catch (err) {
-      console.error('[store] save failed:', err.message)
-    }
-  }, 50)
+  saveDeadline = due
+  saveTimer = setTimeout(writeNow, ms)
+}
+
+/** Persist soon (50 ms) — for real changes: sales, refills, settings, users. */
+export function save() {
+  schedule(50)
+}
+
+/**
+ * Persist lazily (within 5 s) — for routine kiosk chatter such as heartbeats and
+ * the Nayax log. Every kiosk sends a heartbeat every 20 s; rewriting the whole
+ * file for each one meant a full rewrite about once a second with 20 kiosks.
+ * Batched like this it is at most one write every 5 s, however many kiosks.
+ */
+export function saveSoon() {
+  schedule(5000)
+}
+
+/** Write any pending change immediately (used on shutdown). */
+export function flush() {
+  if (saveTimer) writeNow()
+}
+
+// systemd stops the service with SIGTERM (restart / reboot): write pending data
+// first so a lazily-batched heartbeat or sale is never lost.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => { flush(); process.exit(0) })
 }
 
 export function data() {

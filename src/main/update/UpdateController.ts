@@ -63,6 +63,14 @@ let downloadedFile = '' // where electron-updater saved the new AppImage
 // acknowledgement happens at check time to avoid re-checking on every tick).
 let forcedInstall = false
 
+// Routine (non-forced) update checks are rate-limited. Without this the kiosk
+// asked GitHub "is there an update?" on EVERY 20-second sync for the whole
+// update window (or all day when the window is switched off) — hundreds of
+// needless requests per kiosk per night. A dashboard "Update now" is never
+// delayed by this.
+const ROUTINE_CHECK_INTERVAL_MS = 30 * 60 * 1000
+let lastRoutineCheckAt = 0
+
 function loadUpdater(): AutoUpdaterLike | null {
   if (updater) return updater
   try {
@@ -257,6 +265,15 @@ export async function runUpdateTick(opts: { dev: boolean }): Promise<void> {
 
   if (!force && !windowOpen) return // outside the allowed window
   if (!isIdle()) return // never start an update mid-sale
+
+  if (!force) {
+    // Already running the approved version → nothing to look for.
+    const target = (cfg.otaTargetVersion || '').trim()
+    if (target && target === app.getVersion()) return
+    // Otherwise look at most once every 30 minutes.
+    if (Date.now() - lastRoutineCheckAt < ROUTINE_CHECK_INTERVAL_MS) return
+    lastRoutineCheckAt = Date.now()
+  }
 
   const u = loadUpdater()
   if (!u) return

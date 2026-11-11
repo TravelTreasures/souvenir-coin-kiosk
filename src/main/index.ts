@@ -4,7 +4,8 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { HopperController, simSetHopperCoinCount } from './hopper/HopperController'
 import { NayaxController } from './nayax/NayaxController'
-import { getHopperCount, setHopperCount } from './database/Database'
+import { getHopperCount, setHopperCount, resolveInterruptedDispenses } from './database/Database'
+import { getConfig, updateConfig } from './config/Config'
 import { setupIPC, isSaleInProgress } from './ipc'
 import { startAdminServer } from './server/AdminServer'
 import { startFleetSync } from './fleet/FleetSync'
@@ -330,6 +331,25 @@ app.whenReady().then(async () => {
   startAdminServer(mdb, nayax)
   // OTA: the updater treats the kiosk as idle whenever a purchase isn't in flight.
   initUpdater(() => !isSaleInProgress())
+  // A sale the app was interrupted in the middle of (paid, coin result never
+  // recorded) is marked as a failed dispense, and re-sent to the fleet server in
+  // case it was already pushed there as "unknown".
+  try {
+    const healedFrom = resolveInterruptedDispenses()
+    if (healedFrom != null && healedFrom <= (getConfig().lastSyncedTxId ?? 0)) {
+      updateConfig({ lastSyncedTxId: healedFrom - 1 })
+    }
+    // ONE-TIME repair after updating to this version: older versions could push
+    // a sale to the server before its coin result was known, leaving it blank
+    // there even though this kiosk recorded the outcome. Re-send the most recent
+    // 500 transactions once; the server keeps what it has and only fills blanks.
+    if (!getConfig().dispenseResyncDone) {
+      updateConfig({ lastSyncedTxId: Math.max(0, (getConfig().lastSyncedTxId ?? 0) - 500), dispenseResyncDone: true })
+    }
+  } catch (e) {
+    console.error('[startup] interrupted-sale recovery failed:', (e as Error)?.message ?? e)
+  }
+
   startFleetSync(mdb, nayax)
   createMainWindow()
 

@@ -166,6 +166,26 @@ export function updateDispenseResult(
     .run(dispenseResult, alertSent, transactionId)
 }
 
+/**
+ * Start-up recovery. A sale is recorded as "approved" the moment the card is
+ * accepted, and its dispense result is filled in right after the hopper runs. If
+ * the app stops in between (power cut, crash, restart) the row would stay
+ * "approved, result unknown" for ever and never be flagged. Mark any such row as
+ * a failed dispense so it shows up for a refund check. Returns the lowest row id
+ * that was changed (so the fleet sync can re-send it), or null if none.
+ */
+export function resolveInterruptedDispenses(): number | null {
+  const db = getDB()
+  if (!db) return null
+  const row = db
+    .prepare(`SELECT MIN(id) AS minId, COUNT(*) AS n FROM transactions WHERE payment_result = 'approved' AND dispense_result IS NULL`)
+    .get() as { minId: number | null; n: number }
+  if (!row || !row.n || row.minId == null) return null
+  db.prepare(`UPDATE transactions SET dispense_result = 'unknown_error' WHERE payment_result = 'approved' AND dispense_result IS NULL`).run()
+  console.warn(`[db] ${row.n} approved sale(s) had no dispense result (app stopped mid-sale) — marked unknown_error`)
+  return row.minId
+}
+
 export function getTransactions(limit = 200, offset = 0): Transaction[] {
   const db = getDB()
   if (!db) return []
