@@ -504,9 +504,13 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
     // and its Refresh button force a real reconnect/re-init on demand (not just a
     // reread of the last status): reconnect a dropped bus, re-init any offline
     // hopper, and reconnect the Nayax if its port is closed.
+    // Never during a sale: the checks talk on the same bus as the dispense.
     try {
       if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
-      else if (!mdb.anyHopperOnline()) await mdb.reinitOfflineHoppers()
+      else if (!isSaleInProgress()) {
+        await mdb.verifyHoppers() // live poll: is each "ok" hopper really answering?
+        if (mdb.anyHopperOffline()) await mdb.reinitOfflineHoppers()
+      }
     } catch {
       /* ignore — report whatever state we're in */
     }

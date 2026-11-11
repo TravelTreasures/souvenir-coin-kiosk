@@ -408,9 +408,13 @@ option {
 /* ============================================================
    Raspberry Pi 5 ONLY (main.tsx adds .perf-lite to <html> on Linux
    arm64). The coins look identical to the mini-PC; the only
-   difference is that a tap is acted on immediately, without waiting
-   to rule out a double-tap zoom.
+   differences make taps feel prompt: no double-tap-zoom wait and a
+   shorter screen fade.
    ============================================================ */
 html.perf-lite * {
   touch-action: manipulation;
+}
+/* Show the next screen sooner: a shorter fade (0.35s → 0.12s) on the Pi. */
+html.perf-lite .fade-in {
+  animation-duration: 0.12s;
 }

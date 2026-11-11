@@ -166,6 +166,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Tell the Pi-only fast-tap handler (main.tsx) which screen is showing.
+  useEffect(() => { document.body.dataset.screen = screen }, [screen])
+
   // ── Navigation helpers ──────────────────────────────────────────
   const goHome = useCallback(() => {
     setScreen('home')

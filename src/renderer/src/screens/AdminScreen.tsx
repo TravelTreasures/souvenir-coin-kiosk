@@ -74,6 +74,26 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const [appVersion, setAppVersion] = useState('')
   const [gfx, setGfx] = useState<{ accelerated: boolean; detail: string } | null>(null)
   const [ports, setPorts] = useState<{ hopper: string; nayax: string; note: string; verified: boolean } | null>(null)
+  // "Re-check hardware" feedback, so it is obvious the check really ran.
+  const [checking, setChecking] = useState(false)
+  const [checkedAt, setCheckedAt] = useState('')
+  const recheckHardware = (): void => {
+    if (checking) return
+    setChecking(true)
+    const started = Date.now()
+    Promise.all([
+      window.kiosk.getSystemStatus().then(setSysStatus),
+      window.kiosk.getPortInfo?.().then(setPorts).catch(() => {})
+    ])
+      .catch(() => {})
+      .finally(() => {
+        // Keep "Checking…" visible for at least 0.6s so a fast check is still seen.
+        setTimeout(() => {
+          setChecking(false)
+          setCheckedAt(new Date().toLocaleTimeString())
+        }, Math.max(0, 600 - (Date.now() - started)))
+      })
+  }
   const [fleet, setFleet] = useState<{
     kioskId: string; fleetUrl: string; fleetApiKey: string; enabled: boolean; appliedConfigVersion: number
     status?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number } | null
@@ -678,16 +698,23 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
             )}
 
             <button
-              onClick={() => { window.kiosk.getSystemStatus().then(setSysStatus); window.kiosk.getPortInfo?.().then(setPorts).catch(() => {}) }}
+              onClick={recheckHardware}
+              disabled={checking}
               style={{
                 marginTop: 24, background: 'transparent',
                 border: '1px solid rgba(201,162,39,0.4)',
                 color: 'var(--text-gold)', padding: '12px 28px',
-                borderRadius: 12, cursor: 'pointer', fontSize: '0.95rem'
+                borderRadius: 12, cursor: 'pointer', fontSize: '0.95rem',
+                opacity: checking ? 0.6 : 1
               }}
             >
-              Re-check hardware
+              {checking ? 'Checking…' : 'Re-check hardware'}
             </button>
+            {checkedAt && !checking && (
+              <span style={{ marginLeft: 14, color: 'var(--success-green)', fontSize: '0.85rem' }}>
+                ✓ Checked at {checkedAt}
+              </span>
+            )}
           </div>
         )}
 

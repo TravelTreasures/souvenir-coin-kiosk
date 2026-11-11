@@ -285,6 +285,33 @@ export class HopperController extends EventEmitter {
   }
 
   /**
+   * Live check for the Diagnostics "Re-check hardware" button: actually talk to
+   * every hopper that is believed to be online. One that no longer answers (cable
+   * pulled, power lost) is marked offline straight away instead of still showing
+   * its last known "ok".
+   */
+  async verifyHoppers(): Promise<void> {
+    if (this.isSimulated || !this.connected || !this.bus) return
+    for (const addr of [H1, H2]) {
+      const h = hoppers[addr]
+      if (!h || h.status === 'offline') continue
+      let alive = false
+      for (let attempt = 0; attempt < 2 && !alive; attempt++) {
+        try {
+          const poll = await this.bus.send(addr, CMD.SIMPLE_POLL, [], INIT_TIMEOUT_MS)
+          alive = poll.header === ACK
+        } catch {
+          /* no answer — try once more, then mark offline */
+        }
+      }
+      if (!alive) {
+        h.status = 'offline'
+        this.emitStatus(addr)
+      }
+    }
+  }
+
+  /**
    * Whether the hopper can dispense a coin RIGHT NOW. Called before authorising a
    * card so we don't charge for a coin we can't deliver — while still selling
    * every coin down to the last one. Checks: the hopper responds (not offline),
