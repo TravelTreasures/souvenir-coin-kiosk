@@ -312,13 +312,25 @@ export class NayaxController extends EventEmitter {
   async cancelVend(): Promise<void> {
     if (this.isSimulated || !this.sessionOpen) return
     await this.safe(async () => {
+      // The card was APPROVED but the coin could not be delivered. Tell the
+      // reader with VEND FAILURE (13 03), the MDB command that means "approved
+      // vend not delivered — refund". (This used to send VEND CANCEL, 13 01,
+      // which the standard only allows BEFORE approval, so the reader was never
+      // told explicitly that the vend had failed.)
       this.inbox = []
-      await this.sendCmd(CASHLESS.VEND_CANCEL)
-      await this.waitFor((e) => e === 'ack' || e === 'ended', 2500)
+      await this.sendCmd(CASHLESS.VEND_FAILURE)
+      const reply = await this.waitFor((e) => e === 'ack' || e === 'ended', 2500)
       this.inbox = []
       await this.sendCmd(CASHLESS.SESSION_COMPLETE)
       await this.waitFor((e) => e === 'ended' || e === 'ack', 3000)
-      recordNayax({ dir: 'INFO', note: 'Refunded (dispense failed) — reader back to ready' })
+      // Say exactly what the reader answered, so the Nayax Log shows whether the
+      // refund instruction was acknowledged — never just assume it was.
+      recordNayax({
+        dir: 'INFO',
+        note: reply
+          ? `DISPENSE FAILED — vend failure (refund) sent, reader acknowledged (${reply.event})`
+          : 'DISPENSE FAILED — vend failure (refund) sent, NO acknowledgement from reader — check this sale in Nayax'
+      })
     })
     this.sessionOpen = false
   }

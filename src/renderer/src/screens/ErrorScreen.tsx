@@ -79,7 +79,8 @@ export function ErrorScreen({ error, onDone, onReturnHome, onRetry }: ErrorScree
             style={{
               fontSize: '1.1rem',
               color: isStaffError ? 'var(--error-red)' : 'var(--text-dim)',
-              lineHeight: 1.5
+              lineHeight: 1.5,
+              whiteSpace: 'pre-line' // honour the line breaks in the messages
             }}
           >
             {error.subMessage}

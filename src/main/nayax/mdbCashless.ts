@@ -16,7 +16,10 @@
  *   11 01 FF FF 00 00      set max / min price
  *   13 00 PP PP II II      request vend   (PPPP = price, IIII = item)
  *   13 02 II II            vend success   (after the coin is dispensed)
- *   13 01                 vend cancel    (refund — coin was NOT dispensed)
+ *   13 01                 vend cancel    (withdraw a vend request BEFORE the
+ *                                         reader has approved/denied it)
+ *   13 03                 vend failure   (AFTER approval: the coin was NOT
+ *                                         dispensed — the reader must refund)
  *   13 04                 session complete
  *   13 05 PP PP II II      cash sale
  *   15 00                 request revalue
@@ -59,7 +62,13 @@ export const CASHLESS = {
   // waits for the VMC's vend request, which is exactly our kiosk flow.
   // ⚠ Only safe on readers that support it — the Nayax VPOS Touch does.
   ALWAYS_IDLE: [0x17, 0x04, 0x00, 0x00, 0x00, 0x20],
+  // Withdraw a vend request that the reader has NOT yet approved (customer
+  // walked away / timeout). Not valid once a vend is approved.
   VEND_CANCEL: [0x13, 0x01],
+  // MDB "VEND FAILURE": the vend WAS approved but the product could not be
+  // delivered, so the reader must refund the customer. This — not VEND CANCEL —
+  // is the command the MDB cashless standard defines for a failed dispense.
+  VEND_FAILURE: [0x13, 0x03],
   SESSION_COMPLETE: [0x13, 0x04],
   REQUEST_ID: [0x17, 0x00]
 } as const
