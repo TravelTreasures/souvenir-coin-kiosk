@@ -293,7 +293,7 @@ export default function App() {
           setError({
             type: 'hopper_empty',
             message: 'Selected Coin Currently Unavailable.',
-            subMessage: 'Your coin was not dispensed and your payment is being cancelled.\nIf your card is still charged, please contact staff.',
+            subMessage: 'Your coin was not dispensed, but your card was charged.\nPlease contact staff for a refund.',
             returnTo: 'coin-select',
             returnDelay: 8000
           })
@@ -301,7 +301,7 @@ export default function App() {
           setError({
             type: 'hopper_jam',
             message: 'Dispensing Error.',
-            subMessage: 'Your coin was not dispensed and your payment is being cancelled.\nIf your card is still charged, please contact staff.',
+            subMessage: 'Your coin was not dispensed, but your card was charged.\nPlease contact staff for a refund.',
             returnTo: 'home',
             returnDelay: 10000
           })
@@ -309,7 +309,7 @@ export default function App() {
           setError({
             type: 'dispense_failed',
             message: 'Dispensing Error.',
-            subMessage: 'Your coin was not dispensed and your payment is being cancelled.\nIf your card is still charged, please contact staff.',
+            subMessage: 'Your coin was not dispensed, but your card was charged.\nPlease contact staff for a refund.',
             returnTo: 'home',
             returnDelay: 10000
           })
