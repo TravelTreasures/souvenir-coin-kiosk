@@ -371,6 +371,36 @@ option {
 }
 
 /* ============================================================
+   THANK-YOU SCREEN — "collect from tray below" pointers
+   ============================================================ */
+/* The two arrows beside the text bob downwards. */
+@keyframes tray-bounce {
+  0%, 100% { transform: translateY(-5px); opacity: 0.55; }
+  50%      { transform: translateY(7px);  opacity: 1; }
+}
+.tray-arrow {
+  display: inline-block;
+  animation: tray-bounce 1s ease-in-out infinite;
+}
+/* Three chevrons under the box light up one after another, top to bottom, so
+   the eye is led down towards the tray. */
+@keyframes tray-chevron {
+  0%   { opacity: 0.12; transform: translateY(-4px); }
+  35%  { opacity: 1;    transform: translateY(0); }
+  70%, 100% { opacity: 0.12; transform: translateY(4px); }
+}
+.tray-chevrons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+.tray-chevrons svg {
+  margin-top: -6px;
+  animation: tray-chevron 1.1s ease-in-out infinite;
+}
+
+/* ============================================================
    SCREEN TRANSITIONS
    ============================================================ */
 @keyframes fade-in {
