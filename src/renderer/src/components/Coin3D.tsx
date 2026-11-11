@@ -20,10 +20,7 @@ import coinBackImg from '../assets/coin-back.png'
 const COIN_IMAGES: Record<1 | 2, string> = { 1: coin1Img, 2: coin2Img }
 
 /** Number of slices forming the cylindrical rim. Higher = smoother edge. */
-const RIM_SLICES_FULL = 40
-/** Raspberry Pi 5 ("lite" profile): fewer rim layers to draw on every frame. */
-const RIM_SLICES_LITE = 24
-const RIM_SLICES = window.kiosk?.perfProfile === 'lite' ? RIM_SLICES_LITE : RIM_SLICES_FULL
+const RIM_SLICES = 40
 
 /** Coin thickness as a fraction of its diameter (reference video ≈ 0.073). */
 const THICKNESS_RATIO = 0.075

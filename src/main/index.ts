@@ -313,7 +313,10 @@ app.whenReady().then(async () => {
       void (async () => {
         try {
           if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
-          else if (!mdb.anyHopperOnline()) await mdb.reinitOfflineHoppers()
+          // Retry ANY offline hopper (it used to retry only when BOTH were
+          // offline, so a single hopper that missed start-up never came back).
+          // Not during a sale, so the retry can't interleave with a dispense.
+          else if (mdb.anyHopperOffline() && !isSaleInProgress()) await mdb.reinitOfflineHoppers()
         } catch {
           /* ignore — retry next tick */
         }

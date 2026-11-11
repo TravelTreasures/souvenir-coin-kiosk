@@ -50,6 +50,10 @@ const H2 = 4
 // never charge a customer for a coin that isn't there. 1 = keep the last coin.
 const RESERVE_COINS = 1
 
+// Start-up commands get a longer reply window than the 150 ms default: at boot
+// the computer is busy and a slower one (Pi 5) can answer late.
+const INIT_TIMEOUT_MS = 400
+
 interface HopperRuntime extends HopperState {
   serial?: number[] // 3-byte serial [LSB, mid, MSB], read at start-up
 }
@@ -161,23 +165,49 @@ export class HopperController extends EventEmitter {
     }
   }
 
-  /** Detect a hopper, read its serial number, and enable payout. */
+  /**
+   * Detect a hopper, read its serial number, and enable payout.
+   *
+   * The hoppers have their own power supply and stay powered when the kiosk
+   * computer reboots, so they can still be in whatever state the previous session
+   * left them in. If any step fails we send the hopper a ccTalk RESET — the
+   * software equivalent of switching its power off and on — so the watchdog's
+   * next attempt (a few seconds later) starts from a clean hopper instead of
+   * needing someone on site to cut the power.
+   */
   private async initHopper(addr: number): Promise<void> {
+    try {
+      await this.initHopperSteps(addr)
+    } catch (e) {
+      try {
+        await this.bus?.send(addr, CMD.RESET, [], INIT_TIMEOUT_MS)
+        console.warn(`[hopper ${addr}] init failed (${(e as Error).message}) — ccTalk RESET sent, will retry`)
+      } catch {
+        /* no answer to the reset either — still retried by the watchdog */
+      }
+      throw e
+    }
+  }
+
+  private async initHopperSteps(addr: number): Promise<void> {
     const bus = this.bus!
     hoppers[addr].status = 'initialising'
 
     // 1. Simple poll — is the hopper on the bus?
-    const poll = await bus.send(addr, CMD.SIMPLE_POLL)
+    const poll = await bus.send(addr, CMD.SIMPLE_POLL, [], INIT_TIMEOUT_MS)
     if (poll.header !== ACK) throw new Error('no ACK to simple poll')
 
+    // 1b. Stop any payout left running by the previous session (best-effort).
+    await bus.send(addr, CMD.EMERGENCY_STOP, [], INIT_TIMEOUT_MS).catch(() => undefined)
+
     // 2. Serial number — required to secure the USE_SERNR dispense command.
-    const ser = await bus.send(addr, CMD.REQUEST_SERIAL)
+    const ser = await bus.send(addr, CMD.REQUEST_SERIAL, [], INIT_TIMEOUT_MS)
     if (ser.header !== ACK || ser.data.length < 3) throw new Error('no serial number')
     hoppers[addr].serial = ser.data.slice(0, 3) // [LSB, mid, MSB]
     console.log(`[hopper ${addr}] serial ${this.serialDecimal(hoppers[addr].serial!)}`)
 
     // 3. Test hopper — surface fault flags (PIN / opto) for logging.
-    const test = await bus.send(addr, CMD.TEST_HOPPER)
+    const test = await bus.send(addr, CMD.TEST_HOPPER, [], INIT_TIMEOUT_MS)
     if (test.header === ACK && test.data.length >= 2) {
       const reg2 = test.data[1]
       if (reg2 & 0x80) {
@@ -189,7 +219,7 @@ export class HopperController extends EventEmitter {
     }
 
     // 4. Enable payout.
-    const en = await bus.send(addr, CMD.ENABLE_HOPPER, [ENABLE_CODE])
+    const en = await bus.send(addr, CMD.ENABLE_HOPPER, [ENABLE_CODE], INIT_TIMEOUT_MS)
     if (en.header !== ACK) throw new Error('enable hopper not ACKed')
 
     hoppers[addr].status = hoppers[addr].coinCount > 0 ? 'ok' : 'empty'
@@ -205,6 +235,11 @@ export class HopperController extends EventEmitter {
     return Object.values(hoppers).some((h) => h.status !== 'offline')
   }
 
+  /** True when at least one hopper is offline and needs another init attempt. */
+  anyHopperOffline(): boolean {
+    return Object.values(hoppers).some((h) => h.status === 'offline')
+  }
+
   /**
    * Re-initialise any hopper still marked offline. At boot the USB/ccTalk bus can
    * open before the hoppers have powered up, leaving them offline; a watchdog
@@ -216,7 +251,13 @@ export class HopperController extends EventEmitter {
     for (const addr of [H1, H2]) {
       if (hoppers[addr]?.status === 'offline') {
         await this.initHopper(addr).catch(() => {
-          /* still not ready — leave offline, the watchdog will try again */
+          // Still not ready. initHopper() set the status to 'initialising' when it
+          // started, so it MUST be put back to 'offline' here — otherwise the
+          // hopper is stuck on 'initialising' forever, the watchdog stops
+          // retrying (it only retries 'offline'), and every sale is refused as
+          // "coin unavailable" even though the hopper is stocked.
+          hoppers[addr].status = 'offline'
+          this.emitStatus(addr)
         })
       }
     }

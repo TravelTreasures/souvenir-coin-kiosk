@@ -125,6 +125,16 @@ export class CctalkBus {
         }
         await delay(3)
       }
+      // Last look before giving up. If the app was busy (start-up on a slower
+      // computer such as the Pi 5) the reply can already be waiting in the
+      // serial driver while our timer fires first — let pending serial data be
+      // delivered once, then check again, instead of reporting a false timeout.
+      await new Promise<void>((r) => setImmediate(r))
+      const late = extractReply(this.rx)
+      if (late) {
+        this.rx = Buffer.from(this.rx.subarray(late.end))
+        return late.reply
+      }
       throw new Error(`ccTalk timeout (dest ${dest}, header ${header})`)
     }
     // chain onto the queue regardless of whether the previous call resolved
