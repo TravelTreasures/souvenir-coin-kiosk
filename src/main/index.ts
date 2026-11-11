@@ -24,6 +24,17 @@ import { initUpdater } from './update/UpdateController'
 // ------------------------------------------------------------------
 type AppMode = 'kiosk' | 'dev'
 
+// Raspberry Pi 5 (Linux arm64) only: Chromium leaves GPU acceleration OFF on this
+// hardware by default, so every animation frame is drawn by the CPU and touches
+// are handled late. Switch the GPU on for compositing + rasterisation. The x86
+// mini-PCs already accelerate and are NOT touched. Must run before app 'ready'.
+// Escape hatch: start with KIOSK_GPU=off to go back to the previous behaviour.
+const IS_PI = process.platform === 'linux' && process.arch === 'arm64'
+if (IS_PI && process.env.KIOSK_GPU !== 'off') {
+  app.commandLine.appendSwitch('ignore-gpu-blocklist')
+  app.commandLine.appendSwitch('enable-gpu-rasterization')
+}
+
 // Serial port for the ccTalk hopper interface (SuzoHapp 107-0251 in USB→ccTalk
 // mode). HOPPER_PORT is the preferred env var; MDB_PORT is kept as a fallback
 // for older configs. On Linux a USB serial adapter is usually /dev/ttyUSB0 —
@@ -187,6 +198,17 @@ function createSimulatorWindow(): void {
 function registerAppControlIPC(): void {
   ipcMain.handle('app:getMode', () => appMode)
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  // Whether Chromium is drawing with the GPU (shown in Admin → Diagnostics).
+  ipcMain.handle('app:getGraphicsStatus', () => {
+    try {
+      const st = app.getGPUFeatureStatus() as unknown as Record<string, string>
+      const comp = String(st.gpu_compositing ?? 'unknown')
+      const rast = String(st.rasterization ?? 'unknown')
+      return { accelerated: comp.startsWith('enabled'), detail: `compositing ${comp} · raster ${rast}` }
+    } catch {
+      return { accelerated: false, detail: 'unknown' }
+    }
+  })
   ipcMain.handle('app:setMode', (_e, mode: AppMode) => {
     switchMode(mode === 'dev' ? 'dev' : 'kiosk')
     return { ok: true }

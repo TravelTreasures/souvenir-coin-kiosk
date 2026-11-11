@@ -89,6 +89,16 @@ const kioskAPI = {
   // App / mode control (Admin > System panel)
   getMode: (): Promise<'kiosk' | 'dev'> => ipcRenderer.invoke('app:getMode'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  // 'lite' on the Raspberry Pi 5 (Linux arm64): the renderer drops the costly
+  // visual effects there. 'full' everywhere else (mini-PCs look exactly as before).
+  // Override for testing with KIOSK_PERF=lite|full.
+  perfProfile: ((): 'lite' | 'full' => {
+    const o = process.env.KIOSK_PERF
+    if (o === 'lite' || o === 'full') return o
+    return process.platform === 'linux' && process.arch === 'arm64' ? 'lite' : 'full'
+  })(),
+  getGraphicsStatus: (): Promise<{ accelerated: boolean; detail: string }> =>
+    ipcRenderer.invoke('app:getGraphicsStatus'),
   setMode: (mode: 'kiosk' | 'dev') => ipcRenderer.invoke('app:setMode', mode),
   quitApp: () => ipcRenderer.invoke('app:quit'),
   restartApp: () => ipcRenderer.invoke('app:restart'),

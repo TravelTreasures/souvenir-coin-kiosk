@@ -72,6 +72,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const [txTimeout, setTxTimeout] = useState('45')
   const [txTimeoutMsg, setTxTimeoutMsg] = useState('')
   const [appVersion, setAppVersion] = useState('')
+  const [gfx, setGfx] = useState<{ accelerated: boolean; detail: string } | null>(null)
   const [fleet, setFleet] = useState<{
     kioskId: string; fleetUrl: string; fleetApiKey: string; enabled: boolean; appliedConfigVersion: number
     status?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number } | null
@@ -112,6 +113,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   useEffect(() => {
     window.kiosk.getAlerts().then(setAlerts)
     window.kiosk.getAppVersion?.().then(setAppVersion).catch(() => {})
+    window.kiosk.getGraphicsStatus?.().then(setGfx).catch(() => {})
     window.kiosk.getOperator?.().then((o) => setMe(o)).catch(() => {})
   }, [])
 
@@ -640,7 +642,11 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                   { label: 'Hopper 1', ok: sysStatus.hopper1.status === 'ok',
                     detail: `${sysStatus.hopper1.status} · ${sysStatus.hopper1.coinCount} coins` },
                   { label: 'Hopper 2', ok: sysStatus.hopper2.status === 'ok',
-                    detail: `${sysStatus.hopper2.status} · ${sysStatus.hopper2.coinCount} coins` }
+                    detail: `${sysStatus.hopper2.status} · ${sysStatus.hopper2.coinCount} coins` },
+                  ...(gfx
+                    ? [{ label: 'Graphics', ok: gfx.accelerated,
+                         detail: gfx.accelerated ? 'Hardware accelerated' : 'Software drawing (slow)' }]
+                    : [])
                 ].map(({ label, ok, detail }) => (
                   <div key={label}
                     style={{

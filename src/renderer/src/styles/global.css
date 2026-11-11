@@ -403,3 +403,37 @@ option {
   align-items: center;
   justify-content: center;
 }
+
+
+/* ============================================================
+   "LITE" PERFORMANCE PROFILE — Raspberry Pi 5 ONLY
+   main.tsx adds .perf-lite to <html> on Linux arm64. The x86
+   mini-PCs never get this class, so they look exactly as before.
+   The coins still spin; only the effects that are expensive to
+   redraw on every frame are switched off, so touches are handled
+   promptly.
+   ============================================================ */
+html.perf-lite .coin3d-face img,
+html.perf-lite .coin-disc img {
+  filter: none;
+}
+html.perf-lite .coin3d-shadow {
+  filter: none;            /* the radial gradient is already soft */
+}
+html.perf-lite .coin3d-rim {
+  background-image: linear-gradient(to right, #6d5412 0%, #b8902a 18%, #f2dc8d 45%, #d9b545 62%, #8a6a18 100%);
+  background-blend-mode: normal;
+}
+html.perf-lite .coin-sheen {
+  display: none;           /* animated blend-mode sweep */
+}
+html.perf-lite .coin-disc {
+  box-shadow:
+    0 10px 24px rgba(0,0,0,0.5),
+    0 0 0 3px rgba(120,95,20,0.85),
+    inset 0 0 14px rgba(0,0,0,0.4);
+}
+/* React to a tap immediately (no wait to rule out a double-tap zoom). */
+html.perf-lite * {
+  touch-action: manipulation;
+}
