@@ -12,7 +12,7 @@
  * been downloaded, else the bundled default artwork.
  */
 
-import { useEffect, useState, useRef } from 'react'
+import { useCoinImage } from '../coinImagesStore'
 import coin1Img from '../assets/coin1.png'
 import coin2Img from '../assets/coin2.png'
 import coinBackImg from '../assets/coin-back.png'
@@ -35,25 +35,8 @@ interface Coin3DProps {
 }
 
 export function Coin3D({ coin, size = 320, spinSeconds = 8, delaySeconds = 0 }: Coin3DProps): JSX.Element {
-  const [remoteSrc, setRemoteSrc] = useState<string | null>(null)
-  const lastRef = useRef<string | null>(null)
-
-  // Poll so a coin-image change from Fleet Admin appears live without a restart
-  // (the Home screen stays mounted), matching live price updates.
-  useEffect(() => {
-    let active = true
-    const load = async (): Promise<void> => {
-      try {
-        const imgs = await window.kiosk?.getCoinImages?.()
-        if (!active) return
-        const next = imgs?.[coin] ?? null
-        if (next !== lastRef.current) { lastRef.current = next; setRemoteSrc(next) }
-      } catch { /* keep current */ }
-    }
-    load()
-    const t = setInterval(load, 5000)
-    return () => { active = false; clearInterval(t) }
-  }, [coin])
+  // Fleet-pushed picture from the shared store (updates live, no polling here).
+  const remoteSrc = useCoinImage(coin)
 
   const src = remoteSrc ?? COIN_IMAGES[coin]
 

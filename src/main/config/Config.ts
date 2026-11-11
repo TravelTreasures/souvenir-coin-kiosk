@@ -9,7 +9,7 @@
 
 import { app } from 'electron'
 import { join } from 'path'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, renameSync } from 'fs'
 
 export type OperatorRole = 'office' | 'operator' | 'viewer'
 export interface KioskOperator {
@@ -164,6 +164,37 @@ function configPath(): string {
   return join(app.getPath('userData'), 'kiosk-config.json')
 }
 
+// ---------------------------------------------------------------------------
+// Storage layout
+// ---------------------------------------------------------------------------
+// The downloaded pictures (coin images + marketing slides) are stored as data
+// URLs and are BIG — megabytes. They used to live inside kiosk-config.json, so
+// every small change (and one happened on every 20-second fleet sync) rewrote
+// megabytes to the SD card / SSD and froze the app while it did so. Now:
+//   • kiosk-config.json  — small settings only, a few KB
+//   • kiosk-media.json   — the pictures, rewritten ONLY when a picture changes
+// and a write is skipped entirely when nothing actually changed.
+// Old single-file configs are read as-is and split on the first write.
+const MEDIA_KEYS = ['coinImages', 'marketingImages'] as const
+type MediaKey = (typeof MEDIA_KEYS)[number]
+const isMediaKey = (k: string): k is MediaKey => (MEDIA_KEYS as readonly string[]).includes(k)
+
+function mediaPath(): string {
+  return join(app.getPath('userData'), 'kiosk-media.json')
+}
+
+/** True when the pictures still sit in the old single file and must be moved. */
+let mediaNeedsWrite = false
+
+/** Write via a temp file + rename, so a power cut mid-write can never leave a
+ *  half-written (corrupt) file behind — the old file stays intact until the new
+ *  one is complete. A kiosk loses power without warning far more often than a PC. */
+function writeFileAtomic(path: string, content: string): void {
+  const tmp = `${path}.tmp`
+  writeFileSync(tmp, content, 'utf8')
+  renameSync(tmp, path)
+}
+
 export function getConfig(): KioskConfig {
   if (cached) return cached
   let result: KioskConfig = { ...DEFAULTS }
@@ -172,27 +203,81 @@ export function getConfig(): KioskConfig {
     if (existsSync(p)) {
       const data = JSON.parse(readFileSync(p, 'utf8'))
       result = { ...DEFAULTS, ...data }
+      // Old layout: pictures inside the main file → move them out on next write.
+      if (MEDIA_KEYS.some((k) => data[k] !== undefined)) mediaNeedsWrite = true
     }
   } catch (err) {
     console.error('[config] could not read config, using defaults:', err)
+  }
+  try {
+    const m = mediaPath()
+    if (existsSync(m)) {
+      const media = JSON.parse(readFileSync(m, 'utf8'))
+      for (const k of MEDIA_KEYS) if (media[k] !== undefined) (result as unknown as Record<string, unknown>)[k] = media[k]
+    }
+  } catch (err) {
+    console.error('[config] could not read media file (pictures will be re-downloaded):', err)
+    // Forget the applied image ids so the next fleet sync downloads them again.
+    result = { ...result, coinImages: {}, coinImageIds: {}, marketingImages: [], marketingImageIds: [] }
   }
   cached = result
   return result
 }
 
-function writeConfig(next: KioskConfig): KioskConfig {
+function writeConfig(next: KioskConfig, writeMedia: boolean): KioskConfig {
   cached = next
   try {
-    writeFileSync(configPath(), JSON.stringify(next, null, 2), 'utf8')
+    const small: Record<string, unknown> = { ...next }
+    for (const k of MEDIA_KEYS) delete small[k]
+    if (writeMedia || mediaNeedsWrite) {
+      // Pictures first: if power is lost between the two writes the old main
+      // file still (harmlessly) carries them.
+      writeFileAtomic(mediaPath(), JSON.stringify({ coinImages: next.coinImages, marketingImages: next.marketingImages }))
+      mediaNeedsWrite = false
+    }
+    writeFileAtomic(configPath(), JSON.stringify(small, null, 2))
   } catch (err) {
     console.error('[config] could not persist config:', err)
   }
   return next
 }
 
-/** Merge a partial update into the config and persist it. */
+/** Merge a partial update into the config and persist it — but only if something
+ *  really changed, so repeated "set it to the same value" calls cost nothing. */
 export function updateConfig(patch: Partial<KioskConfig>): KioskConfig {
-  return writeConfig({ ...getConfig(), ...patch })
+  const cur = getConfig() as unknown as Record<string, unknown>
+  const p = patch as unknown as Record<string, unknown>
+  let changed = false
+  let mediaChanged = false
+  for (const k of Object.keys(p)) {
+    if (cur[k] === p[k]) continue
+    if (JSON.stringify(cur[k]) === JSON.stringify(p[k])) continue
+    changed = true
+    if (isMediaKey(k)) mediaChanged = true
+  }
+  if (!changed && !mediaNeedsWrite) return getConfig()
+  return writeConfig({ ...getConfig(), ...patch }, mediaChanged)
+}
+
+/** The config WITHOUT the big pictures — for anything that only needs settings. */
+export function getConfigLight(): Omit<KioskConfig, MediaKey> {
+  const { coinImages: _c, marketingImages: _m, ...rest } = getConfig()
+  return rest
+}
+
+/**
+ * Record the outcome of the latest fleet sync. The timestamp changes on every
+ * sync, so it is kept in memory only; the file is written just when the STATE
+ * changes (ok → offline, etc.). This is what stops the 20-second disk write.
+ */
+export function setFleetStatus(status: NonNullable<KioskConfig['fleetStatus']>): void {
+  const cur = getConfig()
+  const prev = cur.fleetStatus
+  if (prev && prev.state === status.state && prev.code === status.code) {
+    cached = { ...cur, fleetStatus: status }
+    return
+  }
+  updateConfig({ fleetStatus: status })
 }
 
 /** Record the current OTA state so the next heartbeat reports it to the fleet server. */

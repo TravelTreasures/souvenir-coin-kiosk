@@ -23,7 +23,7 @@ import {
   getUnresolvedAlerts,
   resolveAlert
 } from './database/Database'
-import { getPriceCents, setPriceCents, getConfig, updateConfig, getAdminPin, verifyAdminPin, changeAdminPin, getTransactionTimeoutSeconds, setTransactionTimeoutSeconds, getCoinsEnabled, getOperationalStatus, getOperators, getComboConfig, setComboLocalPrice, setComboEnabledLocal } from './config/Config'
+import { getPriceCents, setPriceCents, getConfig, getConfigLight, updateConfig, getAdminPin, verifyAdminPin, changeAdminPin, getTransactionTimeoutSeconds, setTransactionTimeoutSeconds, getCoinsEnabled, getOperationalStatus, getOperators, getComboConfig, setComboLocalPrice, setComboEnabledLocal } from './config/Config'
 import type { OperatorRole } from './config/Config'
 import { startFleetSync, stopFleetSync } from './fleet/FleetSync'
 import { v4 as uuidv4 } from 'uuid'
@@ -342,7 +342,27 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
   // ----------------------------------------------------------------
   // Config (coin price)
   // ----------------------------------------------------------------
-  ipcMain.handle('config:get', () => getConfig())
+  // Settings only — never the multi-megabyte pictures (those have their own calls).
+  ipcMain.handle('config:get', () => getConfigLight())
+
+  // ONE small call the customer screens poll instead of eight separate ones. It
+  // carries every setting they need plus two short "signatures" for the pictures;
+  // the pictures themselves are fetched only when a signature changes.
+  ipcMain.handle('config:getLive', () => {
+    const c = getConfig()
+    const marketing = c.marketing || { enabled: false, slideSeconds: 10, idleSeconds: 60, activeStart: '', activeEnd: '' }
+    return {
+      coinPriceCents: c.coinPriceCents,
+      transactionTimeoutSeconds: getTransactionTimeoutSeconds(),
+      coinsEnabled: getCoinsEnabled(),
+      combo: getComboConfig(),
+      operationalStatus: getOperationalStatus(),
+      promo: { text: c.promoText ?? '', enabled: !!c.promoEnabled },
+      qr: { enabled: !!c.qrEnabled, url: c.qrUrl ?? '', caption: c.qrCaption ?? '' },
+      coinImagesSig: JSON.stringify(c.coinImageIds || {}),
+      marketingSig: JSON.stringify([marketing, c.marketingImageIds || [], (c.marketingImages || []).length])
+    }
+  })
 
   ipcMain.handle('config:setPrice', (_event, cents: number) => {
     if (!canConfig()) return { ok: false, error: 'Only Office role can change configuration.' }

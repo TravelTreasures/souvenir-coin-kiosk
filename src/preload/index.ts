@@ -54,6 +54,18 @@ const kioskAPI = {
   getTransactionTimeout: (): Promise<number> => ipcRenderer.invoke('config:getTransactionTimeout'),
   setTransactionTimeout: (seconds: number): Promise<{ ok: boolean; seconds: number }> =>
     ipcRenderer.invoke('config:setTransactionTimeout', seconds),
+  // One lightweight call for everything the customer screens poll.
+  getLiveConfig: (): Promise<{
+    coinPriceCents: number
+    transactionTimeoutSeconds: number
+    coinsEnabled: { '1': boolean; '2': boolean }
+    combo: { enabled: boolean; priceCents: number; allowOverride: boolean; fleetPriceCents: number; localPriceCents: number | null }
+    operationalStatus: string
+    promo: { text: string; enabled: boolean }
+    qr: { enabled: boolean; url: string; caption: string }
+    coinImagesSig: string
+    marketingSig: string
+  }> => ipcRenderer.invoke('config:getLive'),
   getCoinImages: (): Promise<{ 1: string | null; 2: string | null }> =>
     ipcRenderer.invoke('config:getCoinImages'),
   getCoinsEnabled: (): Promise<{ '1': boolean; '2': boolean }> =>

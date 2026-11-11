@@ -29,7 +29,7 @@ import {
   getUnresolvedAlerts,
   resolveAlert
 } from '../database/Database'
-import { getConfig, setPriceCents } from '../config/Config'
+import { getConfigLight, setPriceCents } from '../config/Config'
 
 const PORT = Number(process.env.ADMIN_WEB_PORT ?? 8787)
 const PASSWORD = process.env.ADMIN_WEB_PASSWORD ?? 'kiosk-admin'
@@ -210,14 +210,14 @@ export function startAdminServer(mdb: HopperController, nayax: NayaxController):
       }
 
       if (req.method === 'GET' && path === '/api/config') {
-        sendJson(res, 200, getConfig())
+        sendJson(res, 200, getConfigLight())
         return
       }
 
       if (req.method === 'POST' && path === '/api/config/price') {
         const body = (await readBody(req)) as { cents?: number }
         if (typeof body.cents === 'number') setPriceCents(body.cents)
-        sendJson(res, 200, getConfig())
+        sendJson(res, 200, getConfigLight())
         return
       }
 

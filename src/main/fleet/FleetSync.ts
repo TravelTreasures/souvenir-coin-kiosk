@@ -14,7 +14,7 @@
 
 import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import { getConfig, updateConfig, setPriceCents } from '../config/Config'
+import { getConfig, updateConfig, setPriceCents, setFleetStatus } from '../config/Config'
 import { getTransactionsSince, getHopperEventsSince, pruneSyncedTransactions, pruneSyncedHopperEvents, setHopperCount, insertHopperEvent } from '../database/Database'
 import { HopperController } from '../hopper/HopperController'
 import type { NayaxController } from '../nayax/NayaxController'
@@ -252,14 +252,14 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         }
         updateConfig({ appliedRefillVersion: conf.refill.version })
       }
-      updateConfig({ fleetStatus: { state: 'ok', at: new Date().toISOString() } })
+      setFleetStatus({ state: 'ok', at: new Date().toISOString() })
     } else {
       console.log(`[fleet-sync] config pull failed: HTTP ${res.status}`)
-      updateConfig({ fleetStatus: { state: res.status === 401 || res.status === 403 ? 'auth_failed' : 'error', at: new Date().toISOString(), code: res.status } })
+      setFleetStatus({ state: res.status === 401 || res.status === 403 ? 'auth_failed' : 'error', at: new Date().toISOString(), code: res.status })
     }
   } catch (e) {
     console.log(`[fleet-sync] cannot reach ${base} — is the central server running? (${(e as Error)?.message})`)
-    updateConfig({ fleetStatus: { state: 'offline', at: new Date().toISOString() } })
+    setFleetStatus({ state: 'offline', at: new Date().toISOString() })
   }
 
   // 2. Push new transactions + hopper maintenance events since the last synced ids.

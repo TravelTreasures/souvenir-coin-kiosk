@@ -19,6 +19,7 @@ import { AdminScreen } from './screens/AdminScreen'
 import { AdminPIN } from './components/AdminPIN'
 import { MarketingScreensaver } from './components/MarketingScreensaver'
 import { VirtualKeyboard } from './components/VirtualKeyboard'
+import { reloadCoinImages } from './coinImagesStore'
 
 interface MarketingConfig {
   enabled: boolean
@@ -71,19 +72,30 @@ export default function App() {
   // Re-poll config, but only push new state when a value ACTUALLY changed.
   // Returning the previous reference from a setter makes React bail out, so an
   // unchanged poll triggers zero re-renders (no screen flicker every 20s).
+  const coinSigRef = useRef<string | null>(null)
+  const marketingSigRef = useRef<string | null>(null)
   const refreshPrice = useCallback(() => {
-    // Numbers: React already bails when the value is identical.
-    window.kiosk.getConfig().then((c) => setPriceCents(c.coinPriceCents))
-    window.kiosk.getTransactionTimeout?.().then((s) => setTxTimeoutSec(s || 45)).catch(() => {})
-    window.kiosk.getCoinsEnabled?.().then((c) => {
-      const next = { 1: c['1'] !== false, 2: c['2'] !== false }
+    // ONE small call for all settings. The big pictures (coin images, marketing
+    // slides) are fetched separately and ONLY when their signature changes —
+    // they used to be re-sent in full on every poll.
+    window.kiosk.getLiveConfig().then((c) => {
+      setPriceCents(c.coinPriceCents) // numbers: React bails when identical
+      setTxTimeoutSec(c.transactionTimeoutSeconds || 45)
+      const next = { 1: c.coinsEnabled['1'] !== false, 2: c.coinsEnabled['2'] !== false }
       setCoinsOn((prev) => (prev[1] === next[1] && prev[2] === next[2] ? prev : next))
+      setCombo((prev) => (sameJSON(prev, c.combo) ? prev : c.combo))
+      setOpStatus(c.operationalStatus || 'active')
+      setPromo((prev) => (sameJSON(prev, c.promo) ? prev : c.promo))
+      setQr((prev) => (sameJSON(prev, c.qr) ? prev : c.qr))
+      if (c.coinImagesSig !== coinSigRef.current) {
+        coinSigRef.current = c.coinImagesSig
+        void reloadCoinImages()
+      }
+      if (c.marketingSig !== marketingSigRef.current) {
+        const sig = c.marketingSig
+        window.kiosk.getMarketing?.().then((m) => { marketingSigRef.current = sig; setMarketing(m) }).catch(() => {})
+      }
     }).catch(() => {})
-    window.kiosk.getCombo?.().then((c) => setCombo((prev) => (sameJSON(prev, c) ? prev : c))).catch(() => {})
-    window.kiosk.getOperationalStatus?.().then((s) => setOpStatus(s || 'active')).catch(() => {})
-    window.kiosk.getPromo?.().then((p) => setPromo((prev) => (sameJSON(prev, p) ? prev : p))).catch(() => {})
-    window.kiosk.getQR?.().then((q) => setQr((prev) => (sameJSON(prev, q) ? prev : q))).catch(() => {})
-    window.kiosk.getMarketing?.().then((m) => setMarketing((prev) => (sameJSON(prev, m) ? prev : m))).catch(() => {})
   }, [])
   useEffect(() => {
     refreshPrice()

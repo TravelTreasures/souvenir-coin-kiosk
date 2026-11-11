@@ -42,44 +42,47 @@ export function PaymentScreen({ coinSelected, onResult, onBack, priceCents }: Pa
         gap: 0
       }}
     >
-      {/* Step indicator */}
-      <p
-        style={{
-          color: 'var(--text-gold)',
-          fontSize: '1rem',
-          letterSpacing: '0.25em',
-          textTransform: 'uppercase',
-          marginBottom: 16
-        }}
-      >
-        Step 2 of 2
-      </p>
+      {/* Heading — larger and shifted up, matching the start and selection
+          screens. transform doesn't reflow, so everything below stays put. */}
+      <div style={{ textAlign: 'center', transform: 'translateY(-110px)' }}>
+        <p
+          style={{
+            color: 'var(--text-gold)',
+            fontSize: '1.4rem',
+            letterSpacing: '0.25em',
+            textTransform: 'uppercase',
+            marginBottom: 12
+          }}
+        >
+          Step 2 of 2
+        </p>
 
-      <h1
-        style={{
-          fontFamily: 'var(--font-heading)',
-          fontSize: 'clamp(1.8rem, 4vw, 2.6rem)',
-          color: 'var(--text-white)',
-          marginBottom: 6,
-          textAlign: 'center'
-        }}
-      >
-        Complete Payment
-      </h1>
-      <div className="gold-divider" />
+        <h1
+          style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: 'clamp(2.6rem, 6vw, 4rem)',
+            color: 'var(--text-white)',
+            marginBottom: 6,
+            textAlign: 'center'
+          }}
+        >
+          Complete Payment
+        </h1>
+        <div className="gold-divider" />
+      </div>
 
       {/* Selected coin (or combo) */}
-      <div style={{ textAlign: 'center', marginTop: 16, marginBottom: 32 }}>
-        <p style={{ color: 'var(--text-dim)', fontSize: '1rem', marginBottom: 18 }}>
+      <div style={{ textAlign: 'center', marginTop: -50, marginBottom: 32 }}>
+        <p style={{ color: 'var(--text-dim)', fontSize: '1.15rem', marginBottom: 18 }}>
           {coinSelected === 3 ? 'Combo — Coin 1 + Coin 2:' : 'Selected Coin:'}
         </p>
         {coinSelected === 3 ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CoinImage coin={1} size={120} style={{ marginRight: -22, zIndex: 2 }} />
-            <CoinImage coin={2} size={120} style={{ marginLeft: -22 }} />
+            <CoinImage coin={1} size={160} style={{ marginRight: -29, zIndex: 2 }} />
+            <CoinImage coin={2} size={160} style={{ marginLeft: -29 }} />
           </div>
         ) : (
-          <CoinImage coin={coinSelected} size={140} />
+          <CoinImage coin={coinSelected} size={185} />
         )}
       </div>
 
