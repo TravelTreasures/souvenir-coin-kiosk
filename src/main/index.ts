@@ -9,6 +9,7 @@ import { setupIPC, isSaleInProgress } from './ipc'
 import { startAdminServer } from './server/AdminServer'
 import { startFleetSync } from './fleet/FleetSync'
 import { initUpdater } from './update/UpdateController'
+import { detectPorts, type PortAssignment } from './hardware/portDetect'
 
 // ------------------------------------------------------------------
 // App mode: 'kiosk' (production lockdown) vs 'dev' (test mode)
@@ -109,6 +110,32 @@ const USE_SIMULATION = is.dev || process.env.SIMULATE_HARDWARE === 'true'
 const mdb = new HopperController(HOPPER_SERIAL_PATH, USE_SIMULATION)
 const nayax = new NayaxController(NAYAX_SERIAL_PATH, USE_SIMULATION)
 
+// Serial-port auto-detection (real hardware only). Skipped when the ports are
+// pinned explicitly with HOPPER_PORT / NAYAX_PORT.
+const PORTS_PINNED = !!(process.env.HOPPER_PORT || process.env.MDB_PORT || process.env.NAYAX_PORT)
+let portInfo: PortAssignment = {
+  hopper: HOPPER_SERIAL_PATH,
+  nayax: NAYAX_SERIAL_PATH,
+  verified: false,
+  note: PORTS_PINNED ? 'Ports fixed by configuration' : 'Not checked yet'
+}
+
+/**
+ * Find out which USB serial adapter the hoppers are really on and point both
+ * controllers at the right ports. Both ports must be CLOSED when this runs.
+ */
+async function assignSerialPorts(): Promise<void> {
+  if (USE_SIMULATION || PORTS_PINNED) return
+  try {
+    portInfo = await detectPorts({ hopper: mdb.getSerialPath() ?? HOPPER_SERIAL_PATH, nayax: nayax.getSerialPath() ?? NAYAX_SERIAL_PATH })
+    mdb.setSerialPath(portInfo.hopper)
+    nayax.setSerialPath(portInfo.nayax)
+    console.log(`[ports] ${portInfo.note}`)
+  } catch (e) {
+    console.error('[ports] detection failed:', (e as Error)?.message ?? e)
+  }
+}
+
 function createMainWindow(): void {
   const kioskOn = isKiosk()
 
@@ -198,6 +225,7 @@ function createSimulatorWindow(): void {
 function registerAppControlIPC(): void {
   ipcMain.handle('app:getMode', () => appMode)
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('app:getPortInfo', () => portInfo)
   // Whether Chromium is drawing with the GPU (shown in Admin → Diagnostics).
   ipcMain.handle('app:getGraphicsStatus', () => {
     try {
@@ -271,6 +299,9 @@ app.whenReady().then(async () => {
   // Connect each device independently so a missing/unwired one (e.g. the Nayax
   // before its converter arrives, or a loose cable) never stops the other — or
   // the app window — from starting. Each just shows offline.
+  // Work out which USB adapter is which BEFORE opening them (the /dev/ttyUSB
+  // names are not stable across a reboot).
+  await assignSerialPorts()
   try { await mdb.connect() } catch (err) { console.error('[startup] hopper connect failed (offline):', (err as Error)?.message ?? err) }
   try { await nayax.connect() } catch (err) { console.error('[startup] Nayax connect failed (offline):', (err as Error)?.message ?? err) }
 
@@ -309,7 +340,11 @@ app.whenReady().then(async () => {
   // hardware comes online on its own once ready (no restart), and also recovers
   // from a transient disconnect during the day. Runs only with real hardware.
   if (!USE_SIMULATION) {
+    let watchdogBusy = false
+    let allOfflineTicks = 0
     setInterval(() => {
+      if (watchdogBusy) return // a previous pass is still running
+      watchdogBusy = true
       void (async () => {
         try {
           if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
@@ -325,7 +360,24 @@ app.whenReady().then(async () => {
         } catch {
           /* ignore — retry next tick */
         }
-      })()
+        // NO hopper answering at all for ~30s? Then we may be on the wrong USB
+        // adapter (the port names swapped). Close both ports, find the hoppers
+        // again, and reconnect on the right ones. Nothing can be sold while the
+        // hoppers are offline anyway, so briefly re-opening the reader is safe.
+        try {
+          allOfflineTicks = mdb.anyHopperOnline() ? 0 : allOfflineTicks + 1
+          if (allOfflineTicks >= 4 && !PORTS_PINNED && !isSaleInProgress()) {
+            allOfflineTicks = 0
+            await mdb.disconnect()
+            await nayax.disconnect()
+            await assignSerialPorts()
+            await mdb.connect().catch(() => undefined)
+            await nayax.connect().catch(() => undefined)
+          }
+        } catch {
+          /* ignore — retry later */
+        }
+      })().finally(() => { watchdogBusy = false })
     }, 8000)
   }
 

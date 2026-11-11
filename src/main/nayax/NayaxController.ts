@@ -183,6 +183,26 @@ export class NayaxController extends EventEmitter {
     return this.connected
   }
 
+  /** Which serial port this controller uses (see hardware/portDetect.ts). */
+  getSerialPath(): string | null {
+    return this.serialPath
+  }
+  setSerialPath(path: string): void {
+    this.serialPath = path
+  }
+
+  /** Close the serial port (used when the port assignment is re-detected). */
+  async disconnect(): Promise<void> {
+    if (this.isSimulated) return
+    const port = this.port as unknown as { isOpen?: boolean; close?: (cb?: () => void) => void } | null
+    this.port = null
+    this.connected = false
+    this.sessionOpen = false
+    this.rxText = ''
+    this.inbox = []
+    if (port?.close && port.isOpen) await new Promise<void>((r) => port.close!(() => r()))
+  }
+
   isSaleInProgress(): boolean {
     return this.saleInProgress
   }

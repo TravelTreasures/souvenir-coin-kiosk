@@ -104,6 +104,7 @@ export class HopperController extends EventEmitter {
   private isSimulated: boolean
   private connected = false
   private bus: CctalkBus | null = null
+  private port: { isOpen: boolean; close: (cb?: (err?: Error | null) => void) => void } | null = null
 
   static readonly HOPPER_1_ADDR = H1
   static readonly HOPPER_2_ADDR = H2
@@ -112,6 +113,25 @@ export class HopperController extends EventEmitter {
     super()
     this.serialPath = serialPath
     this.isSimulated = simulated
+  }
+
+  /** Which serial port this controller uses (see hardware/portDetect.ts). */
+  getSerialPath(): string | null {
+    return this.serialPath
+  }
+  setSerialPath(path: string): void {
+    this.serialPath = path
+  }
+
+  /** Close the serial port (used when the port assignment is re-detected). */
+  async disconnect(): Promise<void> {
+    if (this.isSimulated) return
+    const port = this.port
+    this.port = null
+    this.bus = null
+    this.connected = false
+    for (const h of Object.values(hoppers)) { h.status = 'offline'; this.emitStatus(h.address) }
+    if (port?.isOpen) await new Promise<void>((r) => port.close(() => r()))
   }
 
   // ------------------------------------------------------------------
@@ -150,6 +170,7 @@ export class HopperController extends EventEmitter {
     })
 
     console.log(`[hopper] ccTalk serial port ${this.serialPath} opened`)
+    this.port = port
     this.bus = new CctalkBus(port)
     this.connected = true
     this.emit('connected')

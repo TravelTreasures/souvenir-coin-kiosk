@@ -73,6 +73,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const [txTimeoutMsg, setTxTimeoutMsg] = useState('')
   const [appVersion, setAppVersion] = useState('')
   const [gfx, setGfx] = useState<{ accelerated: boolean; detail: string } | null>(null)
+  const [ports, setPorts] = useState<{ hopper: string; nayax: string; note: string; verified: boolean } | null>(null)
   const [fleet, setFleet] = useState<{
     kioskId: string; fleetUrl: string; fleetApiKey: string; enabled: boolean; appliedConfigVersion: number
     status?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number } | null
@@ -114,6 +115,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
     window.kiosk.getAlerts().then(setAlerts)
     window.kiosk.getAppVersion?.().then(setAppVersion).catch(() => {})
     window.kiosk.getGraphicsStatus?.().then(setGfx).catch(() => {})
+    window.kiosk.getPortInfo?.().then(setPorts).catch(() => {})
     window.kiosk.getOperator?.().then((o) => setMe(o)).catch(() => {})
   }, [])
 
@@ -669,8 +671,14 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
               <div className="spinner" />
             )}
 
+            {ports && (
+              <p style={{ marginTop: 16, color: ports.verified ? 'var(--text-dim)' : 'var(--error-red)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                USB ports: {ports.note}
+              </p>
+            )}
+
             <button
-              onClick={() => window.kiosk.getSystemStatus().then(setSysStatus)}
+              onClick={() => { window.kiosk.getSystemStatus().then(setSysStatus); window.kiosk.getPortInfo?.().then(setPorts).catch(() => {}) }}
               style={{
                 marginTop: 24, background: 'transparent',
                 border: '1px solid rgba(201,162,39,0.4)',
