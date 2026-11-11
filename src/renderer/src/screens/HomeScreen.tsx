@@ -121,15 +121,15 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
             background: 'rgba(201,162,39,0.12)',
             border: '1px solid rgba(201,162,39,0.35)',
             borderRadius: 16,
-            padding: '14px 48px',
+            padding: '18px 60px',
             marginBottom: 56,
             textAlign: 'center'
           }}
         >
-          <span style={{ color: 'var(--text-gold)', fontSize: '1.4rem', fontWeight: 700 }}>
+          <span style={{ color: 'var(--text-gold)', fontSize: '2.6rem', fontWeight: 700 }}>
             R{(priceCents / 100).toFixed(2)}
           </span>
-          <span style={{ color: 'var(--text-dim)', fontSize: '1rem', marginLeft: 10 }}>
+          <span style={{ color: 'var(--text-dim)', fontSize: '1.6rem', marginLeft: 14 }}>
             per coin
           </span>
         </div>
@@ -140,7 +140,7 @@ export function HomeScreen({ onTouch, priceCents, promo, qr, coinsOn }: HomeScre
         <div className="pulse" style={{ textAlign: 'center' }}>
           <p
             style={{
-              fontSize: 'clamp(1.4rem, 3vw, 2rem)',
+              fontSize: 'clamp(2.2rem, 5vw, 3.2rem)',
               fontWeight: 700,
               color: 'var(--text-white)',
               letterSpacing: '0.05em',

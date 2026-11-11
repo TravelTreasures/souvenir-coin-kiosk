@@ -245,6 +245,9 @@ function salesBetween(kioskId, from, to) {
       }
     }
   }
+  // Physical coins dispensed per hopper: a combo releases one of EACH coin.
+  out.coin1Units = out.coin1Sales + out.comboSales
+  out.coin2Units = out.coin2Sales + out.comboSales
   return out
 }
 
@@ -338,6 +341,25 @@ function reconcile(kiosk, from, to) {
       .filter((e) => e.kioskId === kiosk.id && e.hopperId === slot && e.type === 'refill' && norm(e.createdAt) >= from && norm(e.createdAt) <= to)
       .reduce((a, e) => a + (e.quantity || 0), 0)
     coins.push({ slot, paid, paidRevenue, dispensed, dispensedRevenue, notDispensed, refundOwed: paidRevenue - dispensedRevenue, refillsAdded })
+  }
+  // Combo Sale (coinSelected 3) is its own row: one payment, one of EACH coin.
+  // Without this row combo money and combo coins were missing from the table.
+  {
+    let paid = 0, paidRevenue = 0, dispensed = 0, dispensedRevenue = 0, notDispensed = 0
+    for (const t of data().transactions) {
+      if (t.kioskId !== kiosk.id || t.coinSelected !== 3) continue
+      if (norm(t.createdAt) < from || norm(t.createdAt) > to) continue
+      if (t.paymentResult === 'approved') {
+        paid++; paidRevenue += t.amount
+        if (t.dispenseResult === 'success') { dispensed++; dispensedRevenue += t.amount }
+        else if (t.dispenseResult) notDispensed++
+      }
+    }
+    if (paid > 0 || kiosk.comboEnabled === true) {
+      coins.push({ slot: 3, paid, paidRevenue, dispensed, dispensedRevenue, notDispensed, refundOwed: paidRevenue - dispensedRevenue, refillsAdded: null })
+    }
+    // Physical coins that left each hopper = single sales + successful combos.
+    for (const c of coins) if (c.slot === 1 || c.slot === 2) c.coinsOut = c.dispensed + dispensed
   }
   return coins
 }
@@ -1165,7 +1187,7 @@ const server = createServer(async (req, res) => {
         byLocation[dest].revenue += s.totalRevenue
         const hb = data().heartbeats[k.id]
         if (hb) totalCoins += (hb.hopper1?.coinCount || 0) + (hb.hopper2?.coinCount || 0)
-        perKiosk.push({ id: k.id, name: k.name, location: k.location, destination: dest, online: isOnline(k.id), sales: s.totalSales, revenue: s.totalRevenue, coin1Sales: s.coin1Sales, coin2Sales: s.coin2Sales })
+        perKiosk.push({ id: k.id, name: k.name, location: k.location, destination: dest, online: isOnline(k.id), sales: s.totalSales, revenue: s.totalRevenue, coin1Sales: s.coin1Sales, coin2Sales: s.coin2Sales, comboSales: s.comboSales })
       }
       return json(res, 200, {
         period,

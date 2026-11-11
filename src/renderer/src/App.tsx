@@ -139,11 +139,6 @@ export default function App() {
     }
   }, [screen, mkSig])
 
-  // Payment retry guard: allow ONE retry after a decline (so the customer can
-  // change to another card), then abort to idle and reset the terminal — a
-  // failing/expired card can no longer loop the kiosk forever.
-  const paymentAttempt = useRef(0)
-
   // Triple-tap to open admin (tap counter on home screen header)
   const adminTapCount = useRef(0)
   const adminTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -175,7 +170,6 @@ export default function App() {
   const goHome = useCallback(() => {
     setScreen('home')
     setError(null)
-    paymentAttempt.current = 0
     refreshPrice()
   }, [refreshPrice])
 
@@ -205,7 +199,6 @@ export default function App() {
 
   const handleCoinSelect = useCallback((coin: CoinSelection) => {
     setCoinSelected(coin)
-    paymentAttempt.current = 0 // fresh transaction
     setScreen('payment')
   }, [])
 
@@ -213,7 +206,6 @@ export default function App() {
   // straight to payment for it; if both, show the selection screen.
   const handleHomeTouch = useCallback(() => {
     const enabled = ([1, 2] as (1 | 2)[]).filter((c) => coinsOn[c])
-    paymentAttempt.current = 0 // fresh transaction
     if (enabled.length === 1) {
       setCoinSelected(enabled[0])
       setScreen('payment')
@@ -226,7 +218,6 @@ export default function App() {
   const handlePaymentResult = useCallback(
     (result: PaymentResult) => {
       if (result.status === 'dispensed') {
-        paymentAttempt.current = 0
         setScreen('thank-you')
         return
       }
@@ -234,7 +225,6 @@ export default function App() {
       // No card presented in time — the customer left. Quietly return to idle
       // (no error screen); the terminal has already been reset.
       if (result.status === 'timeout') {
-        paymentAttempt.current = 0
         goHome()
         return
       }
@@ -253,33 +243,19 @@ export default function App() {
         return
       }
 
+      // Payment not completed (declined, cancelled or failed at the reader).
+      // Cancel the whole transaction and return to the start for a NEW purchase —
+      // the customer is never asked to complete the same payment a second time.
+      // The declined sale already closed the Nayax session (reader is idle), so no
+      // extra reset is needed — sending one now would be an out-of-sequence command.
       if (result.status === 'declined') {
-        if (paymentAttempt.current < 1) {
-          // First decline — give the customer ONE more chance to present a
-          // different card. The error screen shows briefly, then returns to the
-          // payment screen (which waits for a fresh tap).
-          paymentAttempt.current += 1
-          setError({
-            type: 'payment_failed',
-            message: 'Payment Failed.',
-            subMessage: 'Please try another card.',
-            returnTo: 'payment',
-            returnDelay: 6000
-          })
-        } else {
-          // Already retried once — stop here and return to idle so a failing/
-          // expired card can't loop the kiosk. The declined sale already closed
-          // the Nayax session (reader is idle), so no extra reset is needed —
-          // sending one now would be an out-of-sequence command.
-          paymentAttempt.current = 0
-          setError({
-            type: 'payment_failed',
-            message: 'Payment Failed.',
-            subMessage: 'Please take your card.\nReturning to the start.',
-            returnTo: 'home',
-            returnDelay: 5000
-          })
-        }
+        setError({
+          type: 'payment_failed',
+          message: 'Payment Not Completed.',
+          subMessage: 'Transaction cancelled. Please take your card.\nReturning to the start.',
+          returnTo: 'home',
+          returnDelay: 5000
+        })
         setScreen('error')
         return
       }
@@ -420,11 +396,6 @@ export default function App() {
           error={error}
           onDone={handleErrorDone}
           onReturnHome={goHome}
-          onRetry={
-            error.type === 'payment_failed'
-              ? () => { setError(null); setScreen('payment') }
-              : undefined
-          }
         />
       )}
 

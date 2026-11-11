@@ -36,7 +36,7 @@ function hoverOut(e: React.MouseEvent<HTMLButtonElement>): void {
   t.style.transform = 'translateY(0)'
 }
 
-const priceStyle: React.CSSProperties = { fontSize: '1.1rem', color: 'var(--text-gold)' }
+const priceStyle: React.CSSProperties = { fontSize: '2.2rem', fontWeight: 700, color: 'var(--text-gold)' }
 const selectBtnStyle: React.CSSProperties = {
   marginTop: 8,
   padding: '10px 36px',
@@ -142,7 +142,7 @@ export function CoinSelectScreen({ onSelect, onBack, priceCents, coinsOn, combo 
               <CoinImage coin={2} size={165} style={{ marginLeft: -30 }} />
             </div>
             <div style={{ textAlign: 'center', marginTop: 24 }}>
-              <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: 2 }}>Coin 1 + Coin 2</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: '1.1rem', marginBottom: 2 }}>Coin 1 + Coin 2</p>
               <p style={priceStyle}>R{(combo.priceCents / 100).toFixed(2)}</p>
             </div>
             <div style={selectBtnStyle}>Select</div>

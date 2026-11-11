@@ -103,7 +103,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.18</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.19</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -999,7 +999,10 @@ async function renderKioskTab(id,k,alerts,isAuto){
         ${metric('Total Sales',s.totalSales)}${metric('Total Revenue',rand(s.totalRevenue))}
         ${metric(coinName(k,1)+' Sales',s.coin1Sales)}${metric(coinName(k,1)+' Revenue',rand(s.coin1Revenue))}
         ${metric(coinName(k,2)+' Sales',s.coin2Sales)}${metric(coinName(k,2)+' Revenue',rand(s.coin2Revenue))}
+        ${(s.comboSales||k.comboEnabled)?metric('Combo Sales',s.comboSales||0)+metric('Combo Revenue',rand(s.comboRevenue||0)):''}
+        ${metric(coinName(k,1)+' coins dispensed',s.coin1Units??s.coin1Sales)}${metric(coinName(k,2)+' coins dispensed',s.coin2Units??s.coin2Sales)}
       </div>
+      <p class="muted" style="font-size:.8rem;margin-top:8px">"Sales" count purchases of that item on its own. A Combo is one sale that dispenses one of each coin, so "coins dispensed" = single sales + combos.</p>
       <div class="card" style="margin-top:18px"><div class="label">${chartTitle}</div><div style="position:relative;height:240px;margin-top:8px"><canvas id="rchart"></canvas></div></div>`;
     drawRevenueChart('rchart',ts);
   }
@@ -1135,10 +1138,11 @@ async function renderKioskTab(id,k,alerts,isAuto){
       <h3 style="font-size:1.05rem;margin:6px 0 10px">Cash reconciliation</h3>
       <div class="pills">${periods.map(p=>`<button class="pchip ${p===window._invp?'active':''}" onclick="window._invp='${p}';render()">${p==='all'?'All Time':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div>
       <div class="card"><div class="muted" style="margin-bottom:8px">${rec.from.substring(0,10)} → ${rec.to.substring(0,10)}</div>
-      <table><thead><tr><th>Coin</th><th>Paid</th><th>Paid revenue</th><th>Dispensed</th><th>Not dispensed</th><th>Refund owed</th><th>Refills added</th></tr></thead><tbody>
-      ${rec.coins.map(c2=>`<tr><td>${esc(coinName(k,c2.slot))}</td><td>${c2.paid}</td><td>${rand(c2.paidRevenue)}</td><td class="ok">${c2.dispensed}</td><td class="${c2.notDispensed?'err':'dim'}">${c2.notDispensed}</td><td class="${c2.refundOwed?'err':'dim'}">${rand(c2.refundOwed)}</td><td>${c2.refillsAdded}</td></tr>`).join('')}
+      <table><thead><tr><th>Item</th><th>Paid</th><th>Paid revenue</th><th>Dispensed</th><th>Not dispensed</th><th>Refund owed</th><th>Coins out of hopper</th><th>Refills added</th></tr></thead><tbody>
+      ${rec.coins.map(c2=>`<tr><td>${esc(coinName(k,c2.slot))}</td><td>${c2.paid}</td><td>${rand(c2.paidRevenue)}</td><td class="ok">${c2.dispensed}</td><td class="${c2.notDispensed?'err':'dim'}">${c2.notDispensed}</td><td class="${c2.refundOwed?'err':'dim'}">${rand(c2.refundOwed)}</td><td>${c2.coinsOut??'—'}</td><td>${c2.refillsAdded??'—'}</td></tr>`).join('')}
+      <tr style="font-weight:700"><td>Total</td><td>${rec.coins.reduce((a,x)=>a+x.paid,0)}</td><td>${rand(rec.coins.reduce((a,x)=>a+x.paidRevenue,0))}</td><td class="ok">${rec.coins.reduce((a,x)=>a+x.dispensed,0)}</td><td>${rec.coins.reduce((a,x)=>a+x.notDispensed,0)}</td><td>${rand(rec.coins.reduce((a,x)=>a+x.refundOwed,0))}</td><td>${rec.coins.reduce((a,x)=>a+(x.coinsOut||0),0)}</td><td>${rec.coins.reduce((a,x)=>a+(x.refillsAdded||0),0)}</td></tr>
       </tbody></table>
-      <p class="muted" style="font-size:.8rem;margin-top:10px">"Not dispensed" = paid but coin not released (refund owed). "Refund owed" = paid revenue minus dispensed value.</p>
+      <p class="muted" style="font-size:.8rem;margin-top:10px">"Not dispensed" = paid but coin not released (refund owed). "Refund owed" = paid revenue minus dispensed value. A Combo is one payment that releases one of each coin; "Coins out of hopper" = single sales + combos.</p>
       </div>
       <h3 style="font-size:1.05rem;margin:22px 0 10px">Hopper maintenance (reported by kiosk)</h3>
       <div class="card">
@@ -1361,7 +1365,7 @@ async function exportKioskSalesExcel(id){
   const r=kRange();const label=r?(r.from+' to '+r.to):(window._kp||'today');
   const [k,s,ts]=await Promise.all([api('/api/kiosks/'+id),api('/api/kiosks/'+id+'/sales?'+kQS()),api('/api/kiosks/'+id+'/timeseries?'+kTsQS())]);
   const wb=XLSX.utils.book_new();
-  const summary=[{Metric:'Kiosk',Value:k.name},{Metric:'Period',Value:label},{Metric:'Total Sales',Value:s.totalSales},{Metric:'Total Revenue (R)',Value:s.totalRevenue/100},{Metric:coinName(k,1)+' Sales',Value:s.coin1Sales},{Metric:coinName(k,1)+' Revenue (R)',Value:s.coin1Revenue/100},{Metric:coinName(k,2)+' Sales',Value:s.coin2Sales},{Metric:coinName(k,2)+' Revenue (R)',Value:s.coin2Revenue/100}];
+  const summary=[{Metric:'Kiosk',Value:k.name},{Metric:'Period',Value:label},{Metric:'Total Sales',Value:s.totalSales},{Metric:'Total Revenue (R)',Value:s.totalRevenue/100},{Metric:coinName(k,1)+' Sales',Value:s.coin1Sales},{Metric:coinName(k,1)+' Revenue (R)',Value:s.coin1Revenue/100},{Metric:coinName(k,2)+' Sales',Value:s.coin2Sales},{Metric:coinName(k,2)+' Revenue (R)',Value:s.coin2Revenue/100},{Metric:'Combo Sales',Value:s.comboSales||0},{Metric:'Combo Revenue (R)',Value:(s.comboRevenue||0)/100},{Metric:coinName(k,1)+' coins dispensed',Value:s.coin1Units??s.coin1Sales},{Metric:coinName(k,2)+' coins dispensed',Value:s.coin2Units??s.coin2Sales}];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summary),'Sales Summary');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ts.map(p=>({Date:p.date,Sales:p.sales,'Revenue (R)':p.revenue/100}))),'Daily');
   XLSX.writeFile(wb,(k.name||id).replace(/\W+/g,'_')+'_sales_'+label.replace(/\W+/g,'_')+'.xlsx');
@@ -1373,7 +1377,7 @@ async function exportKioskSalesPDF(id){
   const {jsPDF}=window.jspdf;const doc=new jsPDF();
   doc.setFontSize(14);doc.text('Sales — '+(k.name||id),14,16);
   doc.setFontSize(10);doc.text('Period: '+label+'   ·   Generated '+new Date().toLocaleString(),14,22);
-  doc.autoTable({startY:28,theme:'plain',body:[['Total sales',s.totalSales],['Total revenue','R'+(s.totalRevenue/100).toFixed(2)],[coinName(k,1)+' sales',s.coin1Sales],[coinName(k,1)+' revenue','R'+(s.coin1Revenue/100).toFixed(2)],[coinName(k,2)+' sales',s.coin2Sales],[coinName(k,2)+' revenue','R'+(s.coin2Revenue/100).toFixed(2)]]});
+  doc.autoTable({startY:28,theme:'plain',body:[['Total sales',s.totalSales],['Total revenue','R'+(s.totalRevenue/100).toFixed(2)],[coinName(k,1)+' sales',s.coin1Sales],[coinName(k,1)+' revenue','R'+(s.coin1Revenue/100).toFixed(2)],[coinName(k,2)+' sales',s.coin2Sales],[coinName(k,2)+' revenue','R'+(s.coin2Revenue/100).toFixed(2)],['Combo sales',s.comboSales||0],['Combo revenue','R'+((s.comboRevenue||0)/100).toFixed(2)],[coinName(k,1)+' coins dispensed',s.coin1Units??s.coin1Sales],[coinName(k,2)+' coins dispensed',s.coin2Units??s.coin2Sales]]});
   doc.save((k.name||id).replace(/\W+/g,'_')+'_sales_'+label.replace(/\W+/g,'_')+'.pdf');
 }
 async function exportGlobalExcel(){
