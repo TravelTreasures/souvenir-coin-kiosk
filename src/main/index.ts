@@ -111,14 +111,16 @@ const USE_SIMULATION = is.dev || process.env.SIMULATE_HARDWARE === 'true'
 const mdb = new HopperController(HOPPER_SERIAL_PATH, USE_SIMULATION)
 const nayax = new NayaxController(NAYAX_SERIAL_PATH, USE_SIMULATION)
 
-// Serial-port auto-detection (real hardware only). Skipped when the ports are
-// pinned explicitly with HOPPER_PORT / NAYAX_PORT.
-const PORTS_PINNED = !!(process.env.HOPPER_PORT || process.env.MDB_PORT || process.env.NAYAX_PORT)
+// Serial-port auto-detection (real hardware only). Ports set in the kiosk's
+// start-up settings (HOPPER_PORT / NAYAX_PORT — older installs have these) are
+// used as the FIRST GUESS only; detection still runs and corrects them if the
+// hoppers are found on a different adapter. They used to switch detection off
+// completely, which left such a kiosk offline whenever the names swapped.
 let portInfo: PortAssignment = {
   hopper: HOPPER_SERIAL_PATH,
   nayax: NAYAX_SERIAL_PATH,
   verified: false,
-  note: PORTS_PINNED ? 'Ports fixed by configuration' : 'Not checked yet'
+  note: 'Not checked yet'
 }
 
 /**
@@ -126,7 +128,7 @@ let portInfo: PortAssignment = {
  * controllers at the right ports. Both ports must be CLOSED when this runs.
  */
 async function assignSerialPorts(): Promise<void> {
-  if (USE_SIMULATION || PORTS_PINNED) return
+  if (USE_SIMULATION) return
   try {
     portInfo = await detectPorts({ hopper: mdb.getSerialPath() ?? HOPPER_SERIAL_PATH, nayax: nayax.getSerialPath() ?? NAYAX_SERIAL_PATH })
     mdb.setSerialPath(portInfo.hopper)
@@ -386,7 +388,7 @@ app.whenReady().then(async () => {
         // hoppers are offline anyway, so briefly re-opening the reader is safe.
         try {
           allOfflineTicks = mdb.anyHopperOnline() ? 0 : allOfflineTicks + 1
-          if (allOfflineTicks >= 4 && !PORTS_PINNED && !isSaleInProgress()) {
+          if (allOfflineTicks >= 4 && !isSaleInProgress()) {
             allOfflineTicks = 0
             await mdb.disconnect()
             await nayax.disconnect()

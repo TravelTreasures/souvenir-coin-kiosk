@@ -253,6 +253,8 @@ export class HopperController extends EventEmitter {
 
   /** True once at least one hopper has answered (so the bus AND a hopper are live). */
   anyHopperOnline(): boolean {
+    // No open bus = no hopper can be online, whatever status was last recorded.
+    if (!this.connected) return false
     return Object.values(hoppers).some((h) => h.status !== 'offline')
   }
 
@@ -350,6 +352,9 @@ export class HopperController extends EventEmitter {
   async getHopperStatus(address: number): Promise<HopperState> {
     const h = hoppers[address]
     if (!h) return { address, status: 'offline', coinCount: 0 }
+    // With the hopper bus not connected a hopper cannot be "ok": report offline
+    // (keeping the coin count) instead of a stale status that hides the fault.
+    if (!this.isSimulated && !this.connected) return { address: h.address, status: 'offline', coinCount: h.coinCount }
     return { address: h.address, status: h.status, coinCount: h.coinCount }
   }
 

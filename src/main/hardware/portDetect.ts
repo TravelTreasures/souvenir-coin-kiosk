@@ -16,7 +16,7 @@
  * is the hopper bus and the other one is the Nayax.
  */
 
-import { readdirSync } from 'fs'
+import { readdirSync, realpathSync } from 'fs'
 import { CctalkBus, CMD, ACK } from '../hopper/cctalk'
 
 const HOPPER_ADDRS = [3, 4]
@@ -44,8 +44,18 @@ export function listUsbSerialPorts(): string[] {
   }
 }
 
-/** Open `path`, poll for a hopper, close it again. Never throws. */
-async function hopperAnswersOn(path: string): Promise<boolean> {
+/** Follow a symlink such as /dev/serial/by-id/… to the real /dev/ttyUSBn name. */
+function realPort(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+/** Open `path`, poll for a hopper, close it again. Never throws. `error` is set
+ *  when the port could not even be opened (missing, busy, or no permission). */
+async function hopperAnswersOn(path: string): Promise<{ found: boolean; error?: string }> {
   const { SerialPort } = await import('serialport')
   const port = new SerialPort({ path, baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', autoOpen: false })
   const close = (): Promise<void> => new Promise((r) => (port.isOpen ? port.close(() => r()) : r()))
@@ -57,15 +67,16 @@ async function hopperAnswersOn(path: string): Promise<boolean> {
       for (const addr of HOPPER_ADDRS) {
         try {
           const reply = await bus.send(addr, CMD.SIMPLE_POLL, [], PROBE_TIMEOUT_MS)
-          if (reply.header === ACK) return true
+          if (reply.header === ACK) return { found: true }
         } catch {
           /* no answer from this address on this port — keep trying */
         }
       }
     }
-    return false
-  } catch {
-    return false // could not open (busy / no permission) — not our hopper port
+    return { found: false }
+  } catch (e) {
+    // Could not open (missing / busy / no permission) — not usable as the hopper port.
+    return { found: false, error: ((e as Error)?.message || 'could not open').split('\n')[0] }
   } finally {
     await close()
     await new Promise((r) => setTimeout(r, 150)) // let the OS release the port
@@ -73,27 +84,37 @@ async function hopperAnswersOn(path: string): Promise<boolean> {
 }
 
 /**
- * Work out which port is which. `current` is used as the fallback when nothing
- * answers (e.g. the hoppers are still powering up), so behaviour is never worse
- * than the old fixed names.
+ * Work out which port is which. `current` (the configured or last-known ports)
+ * is only a STARTING POINT: it is tried first, and it is the fallback when
+ * nothing answers (e.g. the hoppers are still powering up). A port that was
+ * fixed in the kiosk's start-up settings is therefore corrected automatically
+ * when the adapters have swapped names, instead of leaving the kiosk offline.
  */
 export async function detectPorts(current: { hopper: string; nayax: string }): Promise<PortAssignment> {
   const candidates = listUsbSerialPorts()
   if (candidates.length === 0) {
-    return { ...current, verified: false, note: 'No USB serial adapters found' }
+    return { ...current, verified: false, note: 'No USB serial adapters found — check the USB cables' }
   }
+  const curHopper = realPort(current.hopper)
+  const curNayax = realPort(current.nayax)
   // Try the currently-assigned hopper port first so the normal case is fastest.
-  const ordered = [...candidates].sort((a, b) => Number(b === current.hopper) - Number(a === current.hopper))
+  const ordered = [...candidates].sort((a, b) => Number(b === curHopper) - Number(a === curHopper))
+  const problems: string[] = []
   for (const path of ordered) {
-    if (await hopperAnswersOn(path)) {
+    const r = await hopperAnswersOn(path)
+    if (r.found) {
       const others = candidates.filter((c) => c !== path)
-      const nayax = others.includes(current.nayax) ? current.nayax : others[0] ?? current.nayax
-      return { hopper: path, nayax, verified: true, note: `Hoppers found on ${path} · card reader on ${nayax}` }
+      const nayax = others.includes(curNayax) ? curNayax : others[0] ?? current.nayax
+      const moved = path !== curHopper ? ' (corrected automatically)' : ''
+      return { hopper: path, nayax, verified: true, note: `Hoppers found on ${path} · card reader on ${nayax}${moved}` }
     }
+    if (r.error) problems.push(`${path}: ${r.error}`)
   }
   return {
     ...current,
     verified: false,
-    note: `No hopper answered on ${candidates.join(', ')} — check hopper power and the ccTalk cable`
+    note:
+      `No hopper answered on ${candidates.join(', ')} — check hopper power and the ccTalk cable` +
+      (problems.length ? ` · could not open ${problems.join('; ')}` : '')
   }
 }
