@@ -176,7 +176,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.28</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.29</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -946,6 +946,8 @@ async function renderKiosk(el,id,isAuto){
 }
 async function renderKioskTab(id,k,alerts,isAuto){
   const c=document.getElementById('ktab');
+  const sysAl=isOperator()?[]:(k.systemAlerts||[]);
+  const alertCount=alerts.length+sysAl.length;
   if(kioskTab==='overview'){
     const h=k.health||{};
     const statusSel=['active','maintenance','out_of_service'].map(s=>`<option value="${s}" ${k.operationalStatus===s?'selected':''}>${stLabel(s)}</option>`).join('');
