@@ -57,6 +57,14 @@ echo "Node.js: $(node -v)"
 # --- 4. create the always-on service ------------------------------------
 echo
 echo "Creating auto-start service ..."
+id -u fleet >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin fleet
+mkdir -p "${APP_DIR}/data"
+chown -R fleet:fleet "${APP_DIR}/data"
+# The limited user must be able to READ the program (but not change it). Without
+# this the service cannot start: "EACCES: permission denied, open server.js".
+( cd "${APP_DIR}" && chgrp fleet ./*.js package.json 2>/dev/null; chmod 640 ./*.js package.json 2>/dev/null; \
+  chgrp -R fleet public; find public -type d -exec chmod 750 {} +; find public -type f -exec chmod 640 {} + ) || true
+
 cat > "${SERVICE}" <<EOF
 [Unit]
 Description=Souvenir Coin Kiosk - Fleet Admin
@@ -65,6 +73,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# Run as a limited user, not root: if the dashboard were ever exploited the
+# attacker would be confined to its own data folder.
+User=fleet
+Group=fleet
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=${APP_DIR}/data
 WorkingDirectory=${APP_DIR}
 ExecStart=/usr/bin/node ${APP_DIR}/server.js
 Restart=always

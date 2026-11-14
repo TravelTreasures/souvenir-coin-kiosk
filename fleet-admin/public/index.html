@@ -25,6 +25,16 @@
   .grid{display:grid;gap:16px}
   .cards{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
   .metrics{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+  /* Sales tab: one card per item, with its Sales and Revenue side by side. */
+  .pcards{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+  .pcard{display:flex;flex-direction:column;gap:14px}
+  .pcard.total{border-color:rgba(201,162,39,.55);background:linear-gradient(180deg,rgba(201,162,39,.10),rgba(201,162,39,.02)),var(--panel)}
+  .pcard .pc-title{font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .pcard .pc-tag{font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--gold-l);border:1px solid rgba(201,162,39,.4);border-radius:999px;padding:2px 9px}
+  .pcard .pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .pcard .pc-stats>div+div{border-left:1px solid var(--line);padding-left:14px}
+  .pcard .pc-foot{color:var(--dim);font-size:.8rem;border-top:1px solid var(--line);padding-top:10px;margin-top:auto}
+  .pcard .pc-foot b{color:inherit;font-weight:700}
   /* masonry: cards are only as tall as their content and pack into the gaps */
   .cards.masonry{display:block;column-width:330px;column-gap:16px}
   .cards.masonry>.card{break-inside:avoid;width:100%;margin:0 0 16px}
@@ -66,10 +76,70 @@
   .hopbar>div{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l))}
   .muted{color:var(--dim);font-size:.85rem}
   .empty{padding:30px;text-align:center;color:var(--dim)}
+  /* =====================================================================
+     v1.20.24 visual refresh — same colours and layout language, tidier and
+     easier to scan. Everything below only RESTYLES existing elements.
+     ===================================================================== */
+  html{scroll-behavior:smooth}
+  body{background:radial-gradient(1200px 600px at 50% -200px,#12264d 0%,var(--bg) 60%) fixed,var(--bg);-webkit-font-smoothing:antialiased;line-height:1.45}
+  ::selection{background:rgba(201,162,39,.35)}
+  *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+  /* top bar + main navigation */
+  .topbar{flex-wrap:wrap;row-gap:10px;padding:14px 28px 0;background:rgba(10,22,40,.92);backdrop-filter:blur(8px)}
+  .topbar>.row{padding-bottom:0}
+  .nav{flex-basis:100%;display:flex;gap:2px;overflow-x:auto;margin:0 -8px;padding:0 0 0 0;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav-item{position:relative;padding:10px 14px 12px;color:var(--dim);font-size:.92rem;font-weight:500;white-space:nowrap;cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;user-select:none}
+  .nav-item:hover{color:var(--white)}
+  .nav-item.active{color:var(--gold-l);border-bottom-color:var(--gold);font-weight:700}
+  .nav.hide+*{margin-top:0}
+  .topbar:has(.nav.hide){padding-bottom:14px}
+  /* page titles */
+  .ptitle{font-size:1.45rem;font-weight:800;letter-spacing:-.01em}
+  h2{letter-spacing:-.01em}
+  h3{letter-spacing:-.005em}
+  /* cards */
+  .card{box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 8px 24px rgba(0,0,0,.18);transition:border-color .15s,transform .15s,box-shadow .15s}
+  .kcard:hover{box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 14px 30px rgba(0,0,0,.3)}
+  .label{text-transform:uppercase;letter-spacing:.06em;font-size:.7rem;font-weight:600}
+  .val,.kmetrics b,td,th{font-variant-numeric:tabular-nums}
+  /* kiosk tabs: a scrollable segmented bar */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;gap:2px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:4px;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{border-bottom:none;border-radius:9px;white-space:nowrap;padding:9px 16px;transition:background .15s,color .15s}
+  .tab:hover{color:var(--white);background:rgba(255,255,255,.05)}
+  .tab.active{background:rgba(201,162,39,.16);color:var(--gold-l);border-bottom-color:transparent}
+  /* tables */
+  th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap}
+  tbody tr{transition:background .12s}
+  tbody tr:hover{background:rgba(255,255,255,.035)}
+  tbody tr:last-child td{border-bottom:none}
+  /* buttons + form fields */
+  button{font-family:inherit}
+  button.btn{box-shadow:0 4px 14px rgba(201,162,39,.25);transition:filter .15s,transform .1s}
+  button.btn:hover{filter:brightness(1.08)}
+  button.btn:active,button.ghost:active,.pchip:active{transform:translateY(1px)}
+  button.ghost{transition:background .15s,border-color .15s}
+  button.ghost:hover{background:rgba(201,162,39,.12);border-color:var(--gold-l)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .pchip{transition:background .15s,border-color .15s,color .15s}
+  .pchip:hover{color:var(--white);border-color:rgba(255,255,255,.25)}
+  input,select,textarea{font-family:inherit;transition:border-color .15s,box-shadow .15s}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold-l);box-shadow:0 0 0 3px rgba(201,162,39,.2)}
+  button:focus-visible,.nav-item:focus-visible,.tab:focus-visible{outline:2px solid var(--gold-l);outline-offset:2px}
+  input[type=checkbox]{accent-color:var(--gold);width:16px;height:16px;padding:0}
+  /* misc */
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:4px 11px}
+  .empty{border:1px dashed var(--line);border-radius:16px}
+  .crumbs{margin-bottom:16px}
+  .login .card,.login{position:relative}
   /* ---- Mobile / small screens ---- */
   @media (max-width:700px){
     .wrap{padding:16px 14px}
-    .topbar{padding:12px 14px}
+    .topbar{padding:12px 14px 0}
+    .nav{margin:0 -6px}
+    .nav-item{padding:9px 11px 11px;font-size:.88rem}
+    .ptitle{font-size:1.25rem}
     .cards{grid-template-columns:1fr}
     .cards.masonry{column-width:auto;column-count:1}
     .metrics{grid-template-columns:repeat(2,1fr)}
@@ -106,12 +176,13 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.22</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.28</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
       <button class="ghost" onclick="logout()">Sign out</button>
     </div>
+    <nav id="nav" class="nav" aria-label="Sections"></nav>
   </div>
   <div class="wrap" id="view"></div>
 </div>
@@ -137,13 +208,29 @@ async function operatorLogin(){
   else document.getElementById('operr').textContent=d.error||'Sign-in failed';
 }
 
+// The kiosk list is needed by the page AND by the live sync badges on every
+// 8-second refresh — two identical requests each time. They now share one
+// request (kept for 3 seconds); anything that changes data clears it at once.
+let _kiosksReq=null,_kiosksAt=0;
+function kiosksList(){
+  if(_kiosksReq && Date.now()-_kiosksAt<3000) return _kiosksReq;
+  _kiosksAt=Date.now();
+  _kiosksReq=api('/api/kiosks').catch(e=>{_kiosksReq=null;throw e});
+  return _kiosksReq;
+}
 async function api(p,opts={}){
+  if(opts.method && opts.method!=='GET') _kiosksReq=null;
   const r=await fetch(p,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...(opts.headers||{})}});
   if(r.status===401){token=null;showLogin();throw new Error('unauth')}
   return r.json();
 }
 const rand=c=>'R'+((c||0)/100).toFixed(2);
-const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// Text shown on the page: neutralise the characters HTML treats as code — now
+// including quotes, so a value can never break out of an attribute either.
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// A value placed inside a quoted JavaScript string in an onclick="…" attribute
+// needs JavaScript escaping (HTML escaping alone is undone before the script runs).
+const jsq=s=>String(s==null?'':s).replace(/[^A-Za-z0-9 _.:\-]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
 const ago=ts=>{if(!ts)return'never';const s=Math.floor((Date.now()-new Date(ts).getTime())/1000);if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'};
 const stLabel=s=>({active:'Active',maintenance:'Maintenance',out_of_service:'Out of Service'}[s]||s);
 
@@ -164,7 +251,34 @@ async function login(){
 }
 function logout(){token=null;showLogin()}
 
-function go(v){view=v;render()}
+function go(v){view=v;renderNav();window.scrollTo(0,0);render()}
+// Main navigation, always visible in the top bar, so any section is one click
+// away from anywhere (it used to be a row of buttons on the Fleet page only).
+const NAV=[
+  {name:'fleet',label:'Fleet'},
+  {name:'monitoring',label:'Monitoring'},
+  {name:'global',label:'Reports'},
+  {name:'pricing',label:'Pricing'},
+  {name:'images',label:'Coin Images',admin:true},
+  {name:'destinations',label:'Destinations',admin:true},
+  {name:'updates',label:'Updates',admin:true},
+  {name:'operators',label:'Operators',admin:true},
+  {name:'users',label:'Users',admin:true},
+  {name:'audit',label:'Audit',admin:true}
+];
+function renderNav(){
+  const el=document.getElementById('nav'); if(!el) return;
+  if(!me||isOperator()){el.innerHTML='';el.classList.add('hide');return}
+  el.classList.remove('hide');
+  const cur=view.name==='kiosk'?'fleet':view.name;
+  const n=window._sysAlerts||0;
+  const html=NAV.filter(i=>!i.admin||admin()).map(i=>`<a class="nav-item ${i.name===cur?'active':''}" onclick="go({name:'${i.name}'})">${i.label}${i.name==='monitoring'&&n>0?`<span class="badge">${n}</span>`:''}</a>`).join('');
+  if(el.innerHTML!==html) el.innerHTML=html;
+}
+// System (hardware) alert types: label + colour. Low coin is a warning (amber);
+// everything else stops sales and is red.
+function sysLabel(t){t=String(t||'');return t==='offline'?'Offline':t.startsWith('low_coin')?'Low coin':t.startsWith('empty')?'Hopper empty':t.startsWith('hopper_fault')?'Hopper fault':t==='hopper_bus'?'Hopper bus':t==='nayax'?'Card reader':t}
+function sysPill(t){const warn=String(t||'').startsWith('low_coin');return `<span class="pill" style="background:${warn?'rgba(224,160,32,.15)':'rgba(229,57,53,.15)'};color:${warn?'var(--amber)':'var(--red)'}">${esc(sysLabel(t))}</span>`}
 // Friendly per-kiosk coin name, falling back to "Coin 1/2" when unset.
 function coinName(k,s){if(s==3)return 'Combo (Coin 1 + Coin 2)';return (k&&(s==1?k.coin1Name:k.coin2Name))||('Coin '+s)}
 function copyNayax(){const t=window._nayaxText||'';if(navigator.clipboard){navigator.clipboard.writeText(t).catch(()=>{});}}
@@ -180,7 +294,7 @@ function syncBadge(k,compact){
 // same precise Applying…→Up to date badge, on any page, without navigating away.
 async function refreshSyncBadges(){
   const els=document.querySelectorAll('.js-syncbadge'); if(!els.length) return;
-  let kiosks; try{ kiosks=await api('/api/kiosks'); }catch(e){ return; }
+  let kiosks; try{ kiosks=await kiosksList(); }catch(e){ return; }
   const map={}; kiosks.forEach(k=>map[k.id]=k);
   els.forEach(el=>{ const k=map[el.dataset.k]; if(!k) return; const html=syncBadge(k,el.dataset.c==='1'); if(el.innerHTML!==html) el.innerHTML=html; });
 }
@@ -267,7 +381,7 @@ async function downloadBackup(ev){
 /* ---------- DESTINATIONS (admin only) ---------- */
 async function renderDestinations(el){
   if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
-  const [dests,kiosks]=await Promise.all([api('/api/destinations'),api('/api/kiosks')]);
+  const [dests,kiosks]=await Promise.all([api('/api/destinations'),kiosksList()]);
   const kiosksOf=name=>kiosks.filter(k=>k.destination===name).map(k=>k.name);
   el.innerHTML=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Destinations</div>
@@ -316,7 +430,7 @@ async function renderMonitoring(el,isAuto){
   const _msig=JSON.stringify([alerts,settings]);
   if(isAuto && el.dataset.monsig===_msig) return;
   el.dataset.monsig=_msig;
-  const typeLabel=t=>t==='offline'?'Offline':t.startsWith('low_coin')?'Low coin':t;
+
   el.innerHTML=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Monitoring</div>
     <h2 style="font-size:1.4rem;margin-bottom:6px">Monitoring & Alerts</h2>
@@ -327,7 +441,7 @@ async function renderMonitoring(el,isAuto){
         ${alerts.map(a=>`<tr>
           <td class="dim">${esc((a.createdAt||'').substring(0,19))}</td>
           <td>${esc(a.kioskName)}</td>
-          <td><span class="pill" style="background:${a.type==='offline'?'rgba(229,57,53,.15)':'rgba(224,160,32,.15)'};color:${a.type==='offline'?'var(--red)':'var(--amber)'}">${typeLabel(a.type)}</span></td>
+          <td>${sysPill(a.type)}</td>
           <td>${esc(a.message)}</td>
           <td>${admin()?`<button class="ghost" onclick="ackAlert(${a.id})">Acknowledge</button>`:'<span class="muted">—</span>'}</td>
         </tr>`).join('')}
@@ -362,7 +476,7 @@ let _imgKiosk=null;          // currently selected kiosk id
 let _preview={1:null,2:null}; // pending upload preview per slot
 async function renderImages(el){
   if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
-  const kiosks=await api('/api/kiosks');
+  const kiosks=await kiosksList();
   if(!_imgKiosk || !kiosks.find(k=>k.id===_imgKiosk)) _imgKiosk=kiosks[0]?.id||null;
   const k=kiosks.find(x=>x.id===_imgKiosk);
   const versions=_imgKiosk?await api('/api/images?kioskId='+encodeURIComponent(_imgKiosk)):[];
@@ -487,7 +601,7 @@ function otaBadge(s){
 }
 async function renderUpdates(el){
   if(!admin()){el.innerHTML='<div class="empty">Admin role required.</div>';return}
-  const [kiosks,releases,settings]=await Promise.all([api('/api/kiosks'),api('/api/releases'),api('/api/settings')]);
+  const [kiosks,releases,settings]=await Promise.all([kiosksList(),api('/api/releases'),api('/api/settings')]);
   const relOpts=releases.map(r=>`<option value="${esc(r.version)}">${esc(r.version)} (${esc(r.channel)})</option>`).join('')||'<option value="">— no versions registered —</option>';
   const kioskOpts=kiosks.map(k=>`<option value="${esc(k.id)}">${esc(k.name)}</option>`).join('');
   el.innerHTML=`
@@ -552,9 +666,9 @@ function otaStatusRows(kiosks){
        <td class="dim">${k.updateWindowEnabled?`${esc(k.updateWindowStart)}–${esc(k.updateWindowEnd)}`:'off'}${k.updateWindowOverride?' *':''}</td>
        <td class="dim">${k.lastUpdateAt?esc(String(k.lastUpdateAt).substring(0,16).replace('T',' ')):'—'}</td>
        <td><div class="row">
-         <button class="ghost" onclick="updateNowOta('${esc(k.id)}')">Update now</button>
-         <button class="ghost" onclick="rollbackOta('${esc(k.id)}')">Rollback</button>
-         <button class="ghost" onclick="windowOta('${esc(k.id)}')">Window</button>
+         <button class="ghost" onclick="updateNowOta('${jsq(k.id)}')">Update now</button>
+         <button class="ghost" onclick="rollbackOta('${jsq(k.id)}')">Rollback</button>
+         <button class="ghost" onclick="windowOta('${jsq(k.id)}')">Window</button>
        </div></td>
      </tr>`).join('')||'<tr><td colspan="7" class="muted">No kiosks yet.</td></tr>';
 }
@@ -562,7 +676,7 @@ function otaStatusRows(kiosks){
 // so Current/Target/Status flip to "successful" without navigating away.
 async function refreshUpdatesStatus(){
   const b=document.getElementById('otaStatusBody'); if(!b) return;
-  try{ const kiosks=await api('/api/kiosks'); const html=otaStatusRows(kiosks); if(b.innerHTML!==html) b.innerHTML=html; }catch(e){}
+  try{ const kiosks=await kiosksList(); const html=otaStatusRows(kiosks); if(b.innerHTML!==html) b.innerHTML=html; }catch(e){}
 }
 async function saveOta(){
   const body={otaFeedUrl:document.getElementById('ota_feed').value.trim(),otaChannel:document.getElementById('ota_channel').value.trim()||'stable',otaWindowStart:document.getElementById('ota_ws').value.trim(),otaWindowEnd:document.getElementById('ota_we').value.trim(),otaWindowEnabled:document.getElementById('ota_en').checked};
@@ -622,15 +736,15 @@ async function renderUsers(el){
       <tbody>${users.map(u=>`<tr>
         <td>${esc(u.username)}${u.username===me.username?' <span class="muted">(you)</span>':''}</td>
         <td>
-          <select onchange="setRole('${esc(u.username)}',this.value)">
+          <select onchange="setRole('${jsq(u.username)}',this.value)">
             <option value="viewer" ${u.role==='viewer'?'selected':''}>Viewer</option>
             <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
           </select>
         </td>
         <td class="dim">${esc((u.createdAt||'').substring(0,10))}</td>
         <td><div class="row">
-          <button class="ghost" onclick="resetPw('${esc(u.username)}')">Reset password</button>
-          ${u.username!==me.username?`<button class="ghost" style="border-color:var(--red);color:var(--red)" onclick="delUser('${esc(u.username)}')">Delete</button>`:''}
+          <button class="ghost" onclick="resetPw('${jsq(u.username)}')">Reset password</button>
+          ${u.username!==me.username?`<button class="ghost" style="border-color:var(--red);color:var(--red)" onclick="delUser('${jsq(u.username)}')">Delete</button>`:''}
         </div></td>
       </tr>`).join('')}</tbody>
     </table></div>`;
@@ -677,7 +791,7 @@ async function renderOperators(el){
         <td class="dim">${esc((o.createdAt||'').substring(0,10))}</td>
         <td><div class="row">
           <button class="ghost" onclick="resetOpPin(${o.id})">Change PIN</button>
-          <button class="ghost" style="border-color:var(--red);color:var(--red)" onclick="delOperator(${o.id},'${esc(o.name)}')">Delete</button>
+          <button class="ghost" style="border-color:var(--red);color:var(--red)" onclick="delOperator(${o.id},'${jsq(o.name)}')">Delete</button>
         </div></td>
       </tr>`).join(''):'<tr><td colspan="5" class="muted" style="padding:16px 0">No operators yet. Add one above.</td></tr>'}</tbody>
     </table></div>`;
@@ -693,7 +807,7 @@ async function delOperator(id,name){if(!confirm('Delete operator '+name+'? Their
 
 /* ---------- SITE PRICING ---------- */
 async function renderPricing(el){
-  const kiosks=await api('/api/kiosks');
+  const kiosks=await kiosksList();
   el.innerHTML=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / Site Pricing</div>
     <h2 style="font-size:1.4rem;margin-bottom:6px">Site-Specific Pricing</h2>
@@ -729,7 +843,7 @@ async function setPrice(id){
 async function renderFleet(el,isAuto){
   // Operators get a stripped-down picker: just the kiosks, to open the Refill tab.
   if(isOperator()){
-    const kiosks=await api('/api/kiosks');
+    const kiosks=await kiosksList();
     const _sig=JSON.stringify(['op',kiosks]);
     if(isAuto && el.dataset.fsig===_sig) return;
     el.dataset.fsig=_sig;
@@ -738,24 +852,16 @@ async function renderFleet(el,isAuto){
       <div class="grid cards">${kiosks.map(kCard).join('')||'<div class="empty">No kiosks.</div>'}</div>`;
     return;
   }
-  const [kiosks,g]=await Promise.all([api('/api/kiosks'),api('/api/reports/global?period=today')]);
+  const [kiosks,g]=await Promise.all([kiosksList(),api('/api/reports/global?period=today')]);
   // On an auto-refresh, skip rebuilding the DOM when nothing changed (no flicker).
+  if((window._sysAlerts||0)!==(g.systemAlerts||0)){window._sysAlerts=g.systemAlerts||0;renderNav()}
   const _sig=JSON.stringify([kiosks,g,window._tagFilter]);
   if(isAuto && el.dataset.fsig===_sig) return;
   el.dataset.fsig=_sig;
   el.innerHTML=`
     <div class="row between" style="margin-bottom:18px">
-      <div class="crumbs">Fleet Overview</div>
+      <div><h2 class="ptitle">Fleet overview</h2><div class="muted">${kiosks.length} kiosk${kiosks.length===1?'':'s'} · today</div></div>
       <div class="row">
-        <button class="ghost" onclick="go({name:'monitoring'})">Monitoring${g.systemAlerts>0?` <span class="badge">${g.systemAlerts}</span>`:''}</button>
-        <button class="ghost" onclick="go({name:'pricing'})">Pricing</button>
-        ${admin()?`<button class="ghost" onclick="go({name:'images'})">Coin Images</button>`:''}
-        ${admin()?`<button class="ghost" onclick="go({name:'destinations'})">Destinations</button>`:''}
-        <button class="ghost" onclick="go({name:'global'})">Global Reports</button>
-        ${admin()?`<button class="ghost" onclick="go({name:'users'})">Users</button>`:''}
-        ${admin()?`<button class="ghost" onclick="go({name:'operators'})">Operators</button>`:''}
-        ${admin()?`<button class="ghost" onclick="go({name:'updates'})">Updates</button>`:''}
-        ${admin()?`<button class="ghost" onclick="go({name:'audit'})">Audit</button>`:''}
         ${admin()?`<button class="btn" onclick="addKiosk()">+ Add Kiosk</button>`:''}
       </div>
     </div>
@@ -765,11 +871,12 @@ async function renderFleet(el,isAuto){
       ${metric('Revenue Today',rand(g.totalRevenue))}
       ${metric('Open Alerts',g.openAlerts, g.openAlerts>0?'err':'')}
     </div>
-    ${(()=>{const tags=[...new Set(kiosks.flatMap(k=>k.tags||[]))].sort();return tags.length?`<div class="pills" style="margin-bottom:16px"><button class="pchip ${!window._tagFilter?'active':''}" onclick="window._tagFilter=null;render()">All</button>${tags.map(t=>`<button class="pchip ${window._tagFilter===t?'active':''}" onclick="window._tagFilter='${esc(t)}';render()">${esc(t)}</button>`).join('')}</div>`:''})()}
+    ${(()=>{const tags=[...new Set(kiosks.flatMap(k=>k.tags||[]))].sort();return tags.length?`<div class="pills" style="margin-bottom:16px"><button class="pchip ${!window._tagFilter?'active':''}" onclick="window._tagFilter=null;render()">All</button>${tags.map(t=>`<button class="pchip ${window._tagFilter===t?'active':''}" onclick="window._tagFilter='${jsq(t)}';render()">${esc(t)}</button>`).join('')}</div>`:''})()}
     <div class="grid cards">
       ${kiosks.filter(k=>!window._tagFilter||(k.tags||[]).includes(window._tagFilter)).map(kCard).join('')||'<div class="empty">No kiosks match this tag.</div>'}
     </div>`;
 }
+function productCard(title,sales,revenue,foot,opt){opt=opt||{};return `<div class="card pcard ${opt.total?'total':''}"><div class="pc-title"><span>${esc(title)}</span>${opt.tag?`<span class="pc-tag">${esc(opt.tag)}</span>`:''}</div><div class="pc-stats"><div><div class="label">Sales</div><div class="val">${sales}</div></div><div><div class="label">Revenue</div><div class="val">${rand(revenue)}</div></div></div>${foot?`<div class="pc-foot">${foot}</div>`:''}</div>`}
 function metric(label,val,cls){return `<div class="card"><div class="label">${label}</div><div class="val ${cls||''}">${val}</div></div>`}
 function kCard(k){
   const h1=k.hopper1, h2=k.hopper2;
@@ -812,25 +919,28 @@ async function renderKiosk(el,id,isAuto){
   if(isOperator()) kioskTab='refill';
   else if(!isAuto) kioskTab=kioskTab||'overview';
   const k=await api('/api/kiosks/'+id);
-  const tabs=isOperator()?['refill']:['overview','transactions','sales','inventory','refill','marketing','alerts','maintenance','nayaxlog'];
+  const tabs=isOperator()?['refill']:['overview','sales','inventory','refill','marketing','alerts','maintenance','transactions','nayaxlog'];
   const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',refill:'Refill',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance',nayaxlog:'Nayax Log'};
   const alerts=isOperator()?[]:await api('/api/kiosks/'+id+'/alerts');
+  // Hardware alerts (empty/low hopper, offline, faults) come with the kiosk itself — no extra request.
+  const sysAl=isOperator()?[]:(k.systemAlerts||[]);
+  const alertCount=alerts.length+sysAl.length;
   const _frame=`
     <div class="crumbs"><a onclick="go({name:'fleet'})">← Fleet</a> / ${esc(k.name)}</div>
     <div class="row between">
-      <div><h2 style="font-size:1.4rem">${esc(k.name)}</h2><div class="muted">${esc(k.location)} · ${esc(k.destination?.name||'')}</div></div>
+      <div><h2 class="ptitle">${esc(k.name)}</h2><div class="muted">${esc([k.location,k.destination?.name].filter((x,i,a)=>x&&a.indexOf(x)===i).join(' · '))}</div></div>
       <div class="row" style="gap:8px;align-items:center">
         <span class="js-syncbadge" data-k="${k.id}">${syncBadge(k)}</span>
         <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
       </div>
     </div>
-    <div class="tabs">${tabs.map(t=>`<button class="tab ${t===kioskTab?'active':''}" onclick="kioskTab='${t}';render()">${labels[t]}${t==='alerts'&&alerts.length?`<span class="badge">${alerts.length}</span>`:''}</button>`).join('')}</div>
+    <div class="tabs">${tabs.map(t=>`<button class="tab ${t===kioskTab?'active':''}" onclick="kioskTab='${t}';render()">${labels[t]}${t==='alerts'&&alertCount?`<span class="badge">${alertCount}</span>`:''}</button>`).join('')}</div>
     <div id="ktab"></div>`;
   // Only rebuild the page frame when the header/tabs actually changed, so the
   // #ktab content (and its change-signature) survives an unchanged auto-refresh.
   // (Compare a stored signature — NOT el.innerHTML, which the browser normalises
   // on read so it would never match and the frame would always rebuild.)
-  const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,k.synced,k.configVersion,k.appliedConfigVersion,kioskTab,alerts.length]);
+  const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,k.synced,k.configVersion,k.appliedConfigVersion,kioskTab,alertCount]);
   if(!el.querySelector('#ktab')||el.dataset.kframe!==_fsig){ el.innerHTML=_frame; el.dataset.kframe=_fsig; }
   await renderKioskTab(id,k,alerts,isAuto);
 }
@@ -851,7 +961,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
         ${metric('Device',(k.online?'● Online':'● Offline'),k.online?'ok':'err')}
         ${metric('Last Seen',ago(h.lastSeen))}
         ${metric('Software',esc(h.appVersion||k.appVersion||'-'))}
-        ${metric('Open Alerts',alerts.length,alerts.length?'err':'')}
+        ${metric('Open Alerts',alertCount,alertCount?'err':'')}
       </div>
       <div class="grid cards masonry">
         <div class="card">
@@ -948,7 +1058,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
           </div>
           <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
             <div class="label" style="color:var(--red)">Danger zone</div>
-            <button class="ghost" style="border-color:var(--red);color:var(--red);margin-top:8px" onclick="deleteKiosk('${id}','${esc(k.name)}')">Delete this kiosk</button>
+            <button class="ghost" style="border-color:var(--red);color:var(--red);margin-top:8px" onclick="deleteKiosk('${id}','${jsq(k.name)}')">Delete this kiosk</button>
           </div>
         </div>`:''}
         ${admin()?`<div class="card">
@@ -998,14 +1108,13 @@ async function renderKioskTab(id,k,alerts,isAuto){
         <button class="ghost" onclick="applyKioskRange()">Apply</button>
         ${r?`<button class="ghost" onclick="clearKioskRange()">Clear</button><span class="pill on">${r.from} → ${r.to}</span>`:''}
       </div>
-      <div class="grid metrics">
-        ${metric('Total Sales',s.totalSales)}${metric('Total Revenue',rand(s.totalRevenue))}
-        ${metric(coinName(k,1)+' Sales',s.coin1Sales)}${metric(coinName(k,1)+' Revenue',rand(s.coin1Revenue))}
-        ${metric(coinName(k,2)+' Sales',s.coin2Sales)}${metric(coinName(k,2)+' Revenue',rand(s.coin2Revenue))}
-        ${(s.comboSales||k.comboEnabled)?metric('Combo Sales',s.comboSales||0)+metric('Combo Revenue',rand(s.comboRevenue||0)):''}
-        ${metric(coinName(k,1)+' coins dispensed',s.coin1Units??s.coin1Sales)}${metric(coinName(k,2)+' coins dispensed',s.coin2Units??s.coin2Sales)}
+      <div class="grid pcards">
+        ${productCard('All sales',s.totalSales,s.totalRevenue,'Completed sales in this period',{total:true,tag:'Total'})}
+        ${productCard(coinName(k,1),s.coin1Sales,s.coin1Revenue,`Coins dispensed: <b>${s.coin1Units??s.coin1Sales}</b>`)}
+        ${productCard(coinName(k,2),s.coin2Sales,s.coin2Revenue,`Coins dispensed: <b>${s.coin2Units??s.coin2Sales}</b>`)}
+        ${(s.comboSales||k.comboEnabled)?productCard('Combo',s.comboSales||0,s.comboRevenue||0,'One of each coin per sale'):''}
       </div>
-      <p class="muted" style="font-size:.8rem;margin-top:8px">"Sales" count purchases of that item on its own. A Combo is one sale that dispenses one of each coin, so "coins dispensed" = single sales + combos.</p>
+      <p class="muted" style="font-size:.8rem;margin-top:8px">Each card counts purchases of that item on its own. A Combo is one sale that dispenses one of each coin, so "Coins dispensed" = that coin's own sales + combos.</p>
       <div class="card" style="margin-top:18px"><div class="label">${chartTitle}</div><div style="position:relative;height:240px;margin-top:8px"><canvas id="rchart"></canvas></div></div>`;
     drawRevenueChart('rchart',ts);
   }
@@ -1045,12 +1154,16 @@ async function renderKioskTab(id,k,alerts,isAuto){
       </div>`;
   }
   else if(kioskTab==='alerts'){
-    const _asig=JSON.stringify(alerts);
+    const _asig=JSON.stringify([alerts,sysAl]);
     if(isAuto && c.dataset.asig===_asig) return;
     c.dataset.asig=_asig;
-    if(!alerts.length){c.innerHTML='<div class="card ok">✓ No outstanding alerts.</div>';return}
-    c.innerHTML='<table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
-      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(a.dispenseResult)}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${esc(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
+    if(!alertCount){c.innerHTML='<div class="card ok">✓ No outstanding alerts.</div>';return}
+    const hw=sysAl.length?'<div class="card" style="margin-bottom:18px"><div class="label">Hardware alerts ('+sysAl.length+')</div><table style="margin-top:8px"><thead><tr><th>Since</th><th>Type</th><th>Detail</th></tr></thead><tbody>'+
+      sysAl.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td>${sysPill(a.type)}</td><td>${esc(a.message)}</td></tr>`).join('')+
+      '</tbody></table><div class="muted" style="font-size:.82rem;margin-top:8px">Reported by the kiosk and checked every minute. These clear by themselves once fixed (hopper refilled, device reconnected).</div></div>':'';
+    if(!alerts.length){c.innerHTML=hw+'<div class="card ok">✓ No payment alerts — every charged sale was dispensed.</div>';return}
+    c.innerHTML=hw+'<div class="label" style="margin-bottom:8px">Payment alerts — charged but coin not dispensed ('+alerts.length+')</div><table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
+      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(a.dispenseResult)}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${jsq(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
   }
   else if(kioskTab==='nayaxlog'){
     const log=await api('/api/kiosks/'+id+'/nayax-log');

@@ -374,6 +374,8 @@ app.whenReady().then(async () => {
     let watchdogStartedAt = 0
     let allOfflineTicks = 0
     let nayaxDownTicks = 0
+    let lastRedetectAt = 0
+    let redetectGapMs = 30_000
     setInterval(() => {
       // A pass that has been "running" for over 2 minutes is stuck, not busy —
       // let a fresh one start, so the watchdog can never stop for good.
@@ -405,7 +407,14 @@ app.whenReady().then(async () => {
           // and came back under a different name, reconnecting to the old name
           // would fail for ever — so search again after ~30s without it too.
           nayaxDownTicks = nayax.isConnected() ? 0 : nayaxDownTicks + 1
-          if ((allOfflineTicks >= 4 || nayaxDownTicks >= 4) && !isSaleInProgress()) {
+          // Back off while it keeps failing: a kiosk whose reader (or hoppers)
+          // is genuinely absent for hours must not close and re-open its serial
+          // ports every 30 seconds for ever. The gap doubles from 30s up to 5
+          // minutes, and returns to 30s as soon as everything is healthy again.
+          if (mdb.anyHopperOnline() && nayax.isConnected()) redetectGapMs = 30_000
+          if ((allOfflineTicks >= 4 || nayaxDownTicks >= 4) && !isSaleInProgress() && Date.now() - lastRedetectAt >= redetectGapMs) {
+            lastRedetectAt = Date.now()
+            redetectGapMs = Math.min(redetectGapMs * 2, 5 * 60_000)
             allOfflineTicks = 0
             nayaxDownTicks = 0
             await mdb.disconnect()

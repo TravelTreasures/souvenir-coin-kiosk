@@ -29,6 +29,10 @@ export interface KioskConfig {
    */
   transactionTimeoutSeconds?: number
 
+  /** Fleet-wide low-coin level (coins). Synced from Fleet Admin so the kiosk's
+   *  Alerts tab warns at the same level as the server. */
+  lowCoinThreshold?: number
+
   /** Name of the operator doing hopper maintenance (remembered for the audit log). */
   maintenanceOperator?: string
 

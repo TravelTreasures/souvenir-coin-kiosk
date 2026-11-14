@@ -38,6 +38,46 @@ load()
 seedAdmin(ADMIN_USER, ADMIN_PASSWORD)
 
 // ------------------------------------------------------------------ helpers
+// ---- Login attempt limiting -------------------------------------------------
+// Without this anyone could try passwords or operator PINs as fast as they liked
+// (a 4-digit PIN has only 10,000 possibilities). Failures are counted per
+// visitor address and per account name; too many locks further tries out for
+// 15 minutes. Kept in memory, so a service restart clears any lock.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
+const LOGIN_MAX_PER_IP = 5        // wrong tries from one address
+const LOGIN_MAX_PER_NAME = 20     // wrong tries against one account, from anywhere
+const loginFails = new Map()      // key -> { count, first, lockedUntil }
+// Behind Caddy the visitor's address arrives in X-Forwarded-For (port 9090 is
+// firewalled, so only Caddy can reach us and the header can be trusted).
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown'
+const loginKeys = (req, name) => [`ip:${clientIp(req)}`, `name:${String(name || '').toLowerCase().slice(0, 80)}`]
+/** Seconds left on a lock for this visitor/account, or 0 if they may try. */
+function loginLockedFor(req, name) {
+  const now = Date.now()
+  let wait = 0
+  for (const k of loginKeys(req, name)) {
+    const f = loginFails.get(k)
+    if (f && f.lockedUntil > now) wait = Math.max(wait, Math.ceil((f.lockedUntil - now) / 1000))
+  }
+  return wait
+}
+function noteLoginFailure(req, name) {
+  const now = Date.now()
+  const [ipKey, nameKey] = loginKeys(req, name)
+  for (const [k, max] of [[ipKey, LOGIN_MAX_PER_IP], [nameKey, LOGIN_MAX_PER_NAME]]) {
+    let f = loginFails.get(k)
+    if (!f || now - f.first > LOGIN_WINDOW_MS) f = { count: 0, first: now, lockedUntil: 0 }
+    f.count++
+    if (f.count >= max) { f.lockedUntil = now + LOGIN_WINDOW_MS; f.count = 0; f.first = now }
+    loginFails.set(k, f)
+  }
+  if (loginFails.size > 5000) for (const [k, f] of loginFails) if (now - f.first > LOGIN_WINDOW_MS && f.lockedUntil < now) loginFails.delete(k)
+  console.log(`[auth] failed sign-in for "${String(name || '').slice(0, 40)}" from ${clientIp(req)}`)
+}
+const noteLoginSuccess = (req) => loginFails.delete(`ip:${clientIp(req)}`)
+const tooManyAttempts = (res, wait) =>
+  json(res, 429, { error: `Too many failed attempts. Try again in ${Math.max(1, Math.ceil(wait / 60))} minute(s).` })
+
 const newToken = (username, role) => {
   const t = randomBytes(24).toString('hex')
   tokens.set(t, { exp: Date.now() + TOKEN_TTL, username, role })
@@ -140,12 +180,36 @@ function monitorFleet() {
       if (!isOnline(k.id)) raiseAlert(k.id, 'offline', `Kiosk offline (no heartbeat for ${s.offlineMinutes}+ min)`)
       else clearAlert(k.id, 'offline')
     }
-    // Low coin per hopper
+    // Coin stock per hopper: EMPTY (0 coins) is its own alert, separate from low.
     for (const slot of [1, 2]) {
       const hop = hb?.[`hopper${slot}`]
       if (hop && typeof hop.coinCount === 'number') {
-        if (hop.coinCount <= s.lowCoinThreshold) raiseAlert(k.id, `low_coin_${slot}`, `Hopper ${slot} low: ${hop.coinCount} coins left`)
-        else clearAlert(k.id, `low_coin_${slot}`)
+        if (hop.coinCount <= 0) {
+          raiseAlert(k.id, `empty_${slot}`, `Hopper ${slot} EMPTY: 0 coins — refill needed`)
+          clearAlert(k.id, `low_coin_${slot}`)
+        } else if (hop.coinCount <= s.lowCoinThreshold) {
+          raiseAlert(k.id, `low_coin_${slot}`, `Hopper ${slot} low: ${hop.coinCount} coins left`)
+          clearAlert(k.id, `empty_${slot}`)
+        } else {
+          clearAlert(k.id, `low_coin_${slot}`)
+          clearAlert(k.id, `empty_${slot}`)
+        }
+      }
+    }
+    // Hardware state, taken from the kiosk's own heartbeat. Only judged while the
+    // kiosk is online — an offline kiosk's last heartbeat is stale, and the
+    // "offline" alert above already covers it.
+    if (hb?.lastSeen && isOnline(k.id)) {
+      if (hb.mdbConnected === false) raiseAlert(k.id, 'hopper_bus', 'Hopper bus not connected — coins cannot be dispensed')
+      else clearAlert(k.id, 'hopper_bus')
+      if (hb.nayaxConnected === false) raiseAlert(k.id, 'nayax', 'Card reader (Nayax) not connected — no card payments')
+      else clearAlert(k.id, 'nayax')
+      for (const slot of [1, 2]) {
+        const st = hb[`hopper${slot}`]?.status
+        // Only when the bus itself is up; otherwise the bus alert says it all.
+        if (hb.mdbConnected !== false && (st === 'offline' || st === 'jam' || st === 'error')) {
+          raiseAlert(k.id, `hopper_fault_${slot}`, `Hopper ${slot} ${st === 'jam' ? 'JAMMED' : 'not responding'} — needs attention`)
+        } else clearAlert(k.id, `hopper_fault_${slot}`)
       }
     }
   }
@@ -364,9 +428,28 @@ function reconcile(kiosk, from, to) {
   return coins
 }
 
-function kioskSummary(k) {
+/**
+ * Summaries for ALL kiosks. The dashboard asks for this list every few seconds,
+ * and it used to re-scan every transaction and every alert once PER KIOSK (20
+ * kiosks = 20 full scans per request). Now it is one scan in total, with the
+ * per-kiosk figures handed to kioskSummary().
+ */
+function kioskSummaries() {
+  const { from, to } = periodBounds('today')
+  const salesToday = new Map()
+  const openAlerts = new Map()
+  for (const t of data().transactions) {
+    if (t.paymentResult !== 'approved' || t.dispenseResult !== 'success') continue
+    const at = norm(t.createdAt)
+    if (at >= from && at <= to) salesToday.set(t.kioskId, (salesToday.get(t.kioskId) || 0) + 1)
+  }
+  for (const a of data().alerts) if (!a.resolved) openAlerts.set(a.kioskId, (openAlerts.get(a.kioskId) || 0) + 1)
+  return data().kiosks.map((k) => kioskSummary(k, { salesToday: salesToday.get(k.id) || 0, openAlerts: openAlerts.get(k.id) || 0 }))
+}
+
+function kioskSummary(k, pre) {
   const hb = data().heartbeats[k.id] || {}
-  const openAlerts = data().alerts.filter((a) => a.kioskId === k.id && !a.resolved).length
+  const openAlerts = pre ? pre.openAlerts : data().alerts.filter((a) => a.kioskId === k.id && !a.resolved).length
   return {
     id: k.id,
     name: k.name,
@@ -378,7 +461,7 @@ function kioskSummary(k) {
     appVersion: hb.appVersion || k.appVersion,
     hopper1: hb.hopper1 || null,
     hopper2: hb.hopper2 || null,
-    salesToday: salesFor(k.id, 'today').totalSales,
+    salesToday: pre ? pre.salesToday : salesFor(k.id, 'today').totalSales,
     openAlerts,
     coinPriceCents: k.coinPriceCents ?? 9000,
     comboEnabled: k.comboEnabled === true,
@@ -518,9 +601,14 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`)
   const path = url.pathname
 
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Kiosk-Key')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS')
+  // No cross-origin access: the dashboard is served from this same server and
+  // the kiosks call the API directly (not from a browser page), so nothing
+  // legitimate needs it. (This used to allow every origin with "*".)
+  // Standard browser protections on every response:
+  res.setHeader('X-Content-Type-Options', 'nosniff')   // never guess a file type
+  res.setHeader('X-Frame-Options', 'DENY')             // cannot be embedded in another site (clickjacking)
+  res.setHeader('Referrer-Policy', 'no-referrer')
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000') // browsers keep using HTTPS
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
   try {
@@ -537,10 +625,14 @@ const server = createServer(async (req, res) => {
     // ---- Staff login (username + password) ----
     if (req.method === 'POST' && path === '/api/login') {
       const b = await body(req)
+      const wait = loginLockedFor(req, b.username)
+      if (wait) return tooManyAttempts(res, wait)
       const user = findUser(b.username)
       if (user && verifyPassword(b.password, user.password)) {
+        noteLoginSuccess(req)
         return json(res, 200, { token: newToken(user.username, user.role), username: user.username, role: user.role })
       }
+      noteLoginFailure(req, b.username)
       return json(res, 401, { error: 'Invalid username or password' })
     }
 
@@ -552,8 +644,11 @@ const server = createServer(async (req, res) => {
       const b = await body(req)
       const name = String(b.name || '').trim()
       const pin = String(b.pin || '').trim()
+      const wait = loginLockedFor(req, 'op:' + name)
+      if (wait) return tooManyAttempts(res, wait)
       const op = data().operators.find((o) => o.name === name && String(o.pin) === pin)
-      if (op) return json(res, 200, { token: newToken(op.name, 'operator'), username: op.name, role: 'operator' })
+      if (op) { noteLoginSuccess(req); return json(res, 200, { token: newToken(op.name, 'operator'), username: op.name, role: 'operator' }) }
+      noteLoginFailure(req, 'op:' + name)
       return json(res, 401, { error: 'Invalid operator name or PIN' })
     }
 
@@ -647,6 +742,10 @@ const server = createServer(async (req, res) => {
         }
         let added = 0, updated = 0
         for (const t of incoming) {
+          // A transaction id is shown in the dashboard, so only plain id
+          // characters are kept — a stolen kiosk key cannot plant code in it.
+          t.transactionId = String(t.transactionId ?? '').replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80)
+          if (!t.transactionId) continue
           const have = existing.get(t.transactionId)
           if (have) {
             // Already stored. If it arrived earlier WITHOUT a dispense result (it
@@ -702,6 +801,8 @@ const server = createServer(async (req, res) => {
           marketing: { ...marketingSettings(kiosk), images: marketingImagesFor(kiosk).map((m) => ({ id: m.id, url: m.url })) },
           operationalStatus: kiosk.operationalStatus,
           destination: destById(kiosk.destinationId),
+          // Fleet-wide low-coin level, so the kiosk's own Alerts tab matches Fleet Admin.
+          lowCoinThreshold: getSettings().lowCoinThreshold,
           adminPin: kiosk.adminPin || '',
           adminPinVersion: kiosk.adminPinVersion ?? 0,
           coins: { '1': kiosk.coin1Enabled !== false, '2': kiosk.coin2Enabled !== false },
@@ -881,7 +982,7 @@ const server = createServer(async (req, res) => {
 
     // List kiosks (main dashboard)
     if (req.method === 'GET' && path === '/api/kiosks') {
-      return json(res, 200, data().kiosks.map(kioskSummary))
+      return json(res, 200, kioskSummaries())
     }
 
     // Add kiosk -> returns api key
@@ -1326,7 +1427,9 @@ const server = createServer(async (req, res) => {
           destination: destById(kiosk.destinationId),
           online: isOnline(kiosk.id),
           synced: (kiosk.configVersion ?? 1) === (kiosk.appliedConfigVersion ?? 0),
-          health: hb
+          health: hb,
+          // Open hardware/system alerts for this kiosk (offline, empty, low, faults).
+          systemAlerts: data().systemAlerts.filter((a) => a.kioskId === kiosk.id && !a.resolved)
         })
       }
 
@@ -1471,7 +1574,18 @@ function serveStatic(path, res) {
   if (!file.startsWith(join(ROOT, 'public')) || !existsSync(file)) {
     res.writeHead(404); res.end('Not found'); return
   }
-  res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' })
+  const headers = { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' }
+  // Content-Security-Policy for the dashboard page: scripts may only come from
+  // this server and the one CDN the page uses, and the page may only send data
+  // back to this server — so injected code could not ship data elsewhere.
+  if (extname(file) === '.html') {
+    headers['Content-Security-Policy'] =
+      "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
+      "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; " +
+      "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    headers['Cache-Control'] = 'no-cache'
+  }
+  res.writeHead(200, headers)
   res.end(readFileSync(file))
 }
 

@@ -49,7 +49,7 @@ const kioskAPI = {
   getSystemStatus: () => ipcRenderer.invoke('system:getStatus'),
 
   // Config (coin price)
-  getConfig: (): Promise<{ coinPriceCents: number }> => ipcRenderer.invoke('config:get'),
+  getConfig: (): Promise<{ coinPriceCents: number; lowCoinThreshold?: number }> => ipcRenderer.invoke('config:get'),
   setPrice: (cents: number) => ipcRenderer.invoke('config:setPrice', cents),
   getTransactionTimeout: (): Promise<number> => ipcRenderer.invoke('config:getTransactionTimeout'),
   setTransactionTimeout: (seconds: number): Promise<{ ok: boolean; seconds: number }> =>

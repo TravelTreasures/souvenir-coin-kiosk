@@ -234,6 +234,11 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         updateConfig({ appliedConfigVersion: conf.configVersion })
         console.log(`[fleet-sync] applied config v${conf.configVersion} (price ${conf.coinPriceCents})`)
       }
+      // Low-coin level is a fleet-wide setting (it does not bump a kiosk's config
+      // version), so apply it on every pull. No disk write unless it changed.
+      if (typeof conf.lowCoinThreshold === 'number' && conf.lowCoinThreshold !== cfg.lowCoinThreshold) {
+        updateConfig({ lowCoinThreshold: Math.max(0, Math.round(conf.lowCoinThreshold)) })
+      }
       // Remote refill — a ONE-SHOT command (like the admin-PIN push). When the
       // server's refill version is newer than what we've applied, add the coins to
       // the hopper and log it as a refill, exactly like an on-kiosk Admin refill.

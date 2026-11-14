@@ -59,6 +59,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [alerts, setAlerts] = useState<Transaction[]>([])
   const [sysStatus, setSysStatus] = useState<SystemStatus | null>(null)
+  const [lowLevel, setLowLevel] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [mode, setMode] = useState<'kiosk' | 'dev' | null>(null)
@@ -77,6 +78,23 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   // "Re-check hardware" feedback, so it is obvious the check really ran.
   const [checking, setChecking] = useState(false)
   const [checkedAt, setCheckedAt] = useState('')
+  // Hardware alerts, worked out from the live status with the SAME rules as
+  // Fleet Admin (server monitorFleet), so both always show the same thing.
+  const hwAlerts: Array<{ key: string; level: 'red' | 'amber'; label: string; message: string }> = []
+  if (sysStatus) {
+    if (!sysStatus.mdbConnected) hwAlerts.push({ key: 'bus', level: 'red', label: 'Hopper bus', message: 'Hopper bus not connected — coins cannot be dispensed' })
+    if (!sysStatus.nayaxConnected) hwAlerts.push({ key: 'nayax', level: 'red', label: 'Card reader', message: 'Card reader (Nayax) not connected — no card payments' })
+    for (const slot of [1, 2] as const) {
+      const h = slot === 1 ? sysStatus.hopper1 : sysStatus.hopper2
+      if (!h) continue
+      if (sysStatus.mdbConnected && (h.status === 'offline' || h.status === 'jam' || h.status === 'error')) {
+        hwAlerts.push({ key: `fault${slot}`, level: 'red', label: 'Hopper fault', message: `Hopper ${slot} ${h.status === 'jam' ? 'JAMMED' : 'not responding'} — needs attention` })
+      }
+      if (h.coinCount <= 0) hwAlerts.push({ key: `empty${slot}`, level: 'red', label: 'Hopper empty', message: `Hopper ${slot} EMPTY: 0 coins — refill needed` })
+      else if (h.coinCount <= lowLevel) hwAlerts.push({ key: `low${slot}`, level: 'amber', label: 'Low coin', message: `Hopper ${slot} low: ${h.coinCount} coins left` })
+    }
+  }
+
   const recheckHardware = (): void => {
     if (checking) return
     setChecking(true)
@@ -104,6 +122,14 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const [pinConf, setPinConf] = useState('')
   const [pinMsg, setPinMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
+  // Once, when Admin opens: load what the Alerts badge needs, so problems show
+  // on the tab straight away without having to open it first.
+  useEffect(() => {
+    window.kiosk.getAlerts().then(setAlerts).catch(() => {})
+    window.kiosk.getSystemStatus().then(setSysStatus).catch(() => {})
+    window.kiosk.getConfig().then((c) => setLowLevel(c.lowCoinThreshold ?? 0)).catch(() => {})
+  }, [])
+
   // Load data based on active tab
   useEffect(() => {
     if (tab === 'hoppers') {
@@ -119,6 +145,8 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
       window.kiosk.getTransactions(100).then(setTransactions)
     } else if (tab === 'alerts') {
       window.kiosk.getAlerts().then(setAlerts)
+      window.kiosk.getSystemStatus().then(setSysStatus).catch(() => {})
+      window.kiosk.getConfig().then((c) => setLowLevel(c.lowCoinThreshold ?? 0)).catch(() => {})
     } else if (tab === 'diagnostics') {
       window.kiosk.getSystemStatus().then(setSysStatus)
     } else if (tab === 'system') {
@@ -349,7 +377,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
         {visibleTabs.map((t) => (
           <button key={t} style={tabStyle(t)} onClick={() => setTab(t)}>
             {{ hoppers: canConfig ? 'Hoppers' : 'Refill', sales: 'Sales', transactions: 'Transactions', alerts: 'Alerts', diagnostics: 'Diagnostics', system: 'System' }[t]}
-            {t === 'alerts' && alerts.length > 0 && (
+            {t === 'alerts' && alerts.length + hwAlerts.length > 0 && (
               <span
                 style={{
                   marginLeft: 8, padding: '2px 8px', borderRadius: 999,
@@ -357,7 +385,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                   fontSize: '0.7rem', fontWeight: 700
                 }}
               >
-                {alerts.length}
+                {alerts.length + hwAlerts.length}
               </span>
             )}
           </button>
@@ -595,6 +623,48 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
         {/* ── ALERTS (critical: approved but not dispensed) ── */}
         {tab === 'alerts' && (
           <div>
+            <h3 style={{ color: 'var(--text-white)', marginBottom: 8, fontSize: '1.1rem' }}>
+              Hardware Alerts
+            </h3>
+            <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: 14 }}>
+              Live state of the hoppers and card reader. The same alerts show in Fleet Admin
+              and clear by themselves once fixed.
+            </p>
+            {hwAlerts.length === 0 ? (
+              <div
+                style={{
+                  padding: '18px', textAlign: 'center', color: 'var(--success-green)',
+                  border: '1px solid rgba(76,175,80,0.3)', borderRadius: 14,
+                  background: 'rgba(76,175,80,0.06)', marginBottom: 32
+                }}
+              >
+                {sysStatus ? '✓ Hoppers and card reader are fine.' : 'Checking hardware…'}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32 }}>
+                {hwAlerts.map((h) => (
+                  <div
+                    key={h.key}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', borderRadius: 12,
+                      border: `1px solid ${h.level === 'red' ? 'rgba(229,57,53,0.5)' : 'rgba(224,160,32,0.5)'}`,
+                      background: h.level === 'red' ? 'rgba(229,57,53,0.08)' : 'rgba(224,160,32,0.08)'
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: '3px 12px', borderRadius: 999, fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap',
+                        color: '#fff', background: h.level === 'red' ? 'var(--error-red)' : '#e0a020'
+                      }}
+                    >
+                      {h.label}
+                    </span>
+                    <span style={{ color: 'var(--text-white)', fontSize: '0.95rem' }}>{h.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <h3 style={{ color: 'var(--text-white)', marginBottom: 8, fontSize: '1.1rem' }}>
               Critical Alerts — Payment Approved but Coin Not Dispensed
             </h3>
