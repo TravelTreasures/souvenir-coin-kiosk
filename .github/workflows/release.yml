@@ -30,7 +30,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: ubuntu-latest,    arch: x64 }    # x86-64 mini-PCs
+          # BOTH runners are PINNED to Ubuntu 24.04 — the same Ubuntu the kiosks
+          # run. Do NOT use "ubuntu-latest": GitHub moves it to newer Ubuntu
+          # releases, and the serial-port driver compiled there then needs a newer
+          # system library (glibc 2.42) than Ubuntu 24.04 has (2.39). The app still
+          # starts, but it cannot open ANY serial port, so the hoppers and the
+          # Nayax reader are offline. That is what broke the mini-PC builds
+          # 1.21.16 – 1.21.29 while the Pi builds (already pinned) kept working.
+          - { runner: ubuntu-24.04,     arch: x64 }    # x86-64 mini-PCs
           - { runner: ubuntu-24.04-arm, arch: arm64 }  # Raspberry Pi 5
     runs-on: ${{ matrix.runner }}
     steps:
@@ -73,3 +80,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx --no-install electron-builder --linux AppImage --${{ matrix.arch }} --publish always
+
+      # Safety net: fail the job (red cross) if any compiled driver in the app
+      # needs a newer glibc than Ubuntu 24.04 provides. If this step is red, DO
+      # NOT deploy this version to the kiosks — their hoppers and card reader
+      # would go offline.
+      - name: Check the app runs on Ubuntu 24.04 (glibc 2.39)
+        run: |
+          worst=$(find dist -path '*unpacked*' -name '*.node' -exec objdump -T {} \; 2>/dev/null | grep -o 'GLIBC_[0-9]*\.[0-9]*' | sort -uV | tail -1)
+          echo "Highest glibc version required by the compiled drivers: ${worst:-none found}"
+          if [ -n "$worst" ] && [ "$(printf '%s\n' 'GLIBC_2.39' "$worst" | sort -V | tail -1)" != "GLIBC_2.39" ]; then
+            echo "::error::This build needs $worst but the kiosks (Ubuntu 24.04) only have GLIBC_2.39. Do NOT deploy it."
+            exit 1
+          fi
