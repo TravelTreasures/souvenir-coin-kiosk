@@ -371,10 +371,15 @@ app.whenReady().then(async () => {
   // from a transient disconnect during the day. Runs only with real hardware.
   if (!USE_SIMULATION) {
     let watchdogBusy = false
+    let watchdogStartedAt = 0
     let allOfflineTicks = 0
+    let nayaxDownTicks = 0
     setInterval(() => {
-      if (watchdogBusy) return // a previous pass is still running
+      // A pass that has been "running" for over 2 minutes is stuck, not busy —
+      // let a fresh one start, so the watchdog can never stop for good.
+      if (watchdogBusy && Date.now() - watchdogStartedAt < 120_000) return
       watchdogBusy = true
+      watchdogStartedAt = Date.now()
       void (async () => {
         try {
           if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
@@ -396,8 +401,13 @@ app.whenReady().then(async () => {
         // hoppers are offline anyway, so briefly re-opening the reader is safe.
         try {
           allOfflineTicks = mdb.anyHopperOnline() ? 0 : allOfflineTicks + 1
-          if (allOfflineTicks >= 4 && !isSaleInProgress()) {
+          // Same for the card reader on its own: if its adapter was unplugged
+          // and came back under a different name, reconnecting to the old name
+          // would fail for ever — so search again after ~30s without it too.
+          nayaxDownTicks = nayax.isConnected() ? 0 : nayaxDownTicks + 1
+          if ((allOfflineTicks >= 4 || nayaxDownTicks >= 4) && !isSaleInProgress()) {
             allOfflineTicks = 0
+            nayaxDownTicks = 0
             await mdb.disconnect()
             await nayax.disconnect()
             await assignSerialPorts()

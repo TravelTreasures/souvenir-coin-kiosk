@@ -545,20 +545,25 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
     // reread of the last status): reconnect a dropped bus, re-init any offline
     // hopper, and reconnect the Nayax if its port is closed.
     // Never during a sale: the checks talk on the same bus as the dispense.
-    try {
-      if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
-      else if (!isSaleInProgress()) {
-        await mdb.verifyHoppers() // live poll: is each "ok" hopper really answering?
-        if (mdb.anyHopperOffline()) await mdb.reinitOfflineHoppers()
+    // The whole live check is capped at 8 seconds: whatever the hardware is
+    // doing, the Diagnostics screen gets an answer and never sits on "Checking…".
+    const liveCheck = (async (): Promise<void> => {
+      try {
+        if (!mdb.isConnected()) await mdb.connect().catch(() => undefined)
+        else if (!isSaleInProgress()) {
+          await mdb.verifyHoppers() // live poll: is each "ok" hopper really answering?
+          if (mdb.anyHopperOffline()) await mdb.reinitOfflineHoppers()
+        }
+      } catch {
+        /* ignore — report whatever state we're in */
       }
-    } catch {
-      /* ignore — report whatever state we're in */
-    }
-    try {
-      if (!nayax.isConnected()) await nayax.connect().catch(() => undefined)
-    } catch {
-      /* ignore */
-    }
+      try {
+        if (!nayax.isConnected()) await nayax.connect().catch(() => undefined)
+      } catch {
+        /* ignore */
+      }
+    })()
+    await Promise.race([liveCheck, new Promise<void>((r) => setTimeout(r, 8000))])
     const [h1, h2] = await Promise.all([
       mdb.getHopperStatus(HopperController.HOPPER_1_ADDR),
       mdb.getHopperStatus(HopperController.HOPPER_2_ADDR)

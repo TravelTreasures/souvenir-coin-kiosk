@@ -33,6 +33,7 @@ import {
   type ReaderEvent
 } from './mdbCashless'
 import { recordNayax } from './nayaxLog'
+import { withTimeout } from '../hopper/cctalk'
 
 export type PaymentResult = 'approved' | 'declined' | 'communication_error' | 'timeout'
 
@@ -164,6 +165,9 @@ export class NayaxController extends EventEmitter {
     port.on('data', (d: Buffer) => this.onData(d))
     this.port = port
     this.connected = true
+    // Unplugging the adapter closes the port (and/or raises an error) later on.
+    port.on('close', () => this.handlePortLost(port, 'port closed'))
+    port.on('error', (err) => this.handlePortLost(port, err.message))
     console.log(`[Nayax] MDB-RS232 serial port ${this.serialPath} opened`)
 
     // Initialise the cashless reader: RESET → config → price range → enable.
@@ -217,7 +221,19 @@ export class NayaxController extends EventEmitter {
     this.sessionOpen = false
     this.rxText = ''
     this.inbox = []
-    if (port?.close && port.isOpen) await new Promise<void>((r) => port.close!(() => r()))
+    if (port?.close && port.isOpen) await withTimeout(new Promise<void>((r) => port.close!(() => r())), 1500, 'port close').catch(() => undefined)
+  }
+
+  /** The USB adapter went away while connected — mark the reader link closed so
+   *  the watchdog reconnects (see HopperController.handlePortLost). */
+  private handlePortLost(port: unknown, reason: string): void {
+    if (this.port !== port) return
+    console.warn(`[Nayax] serial port lost: ${reason}`)
+    this.port = null
+    this.connected = false
+    this.sessionOpen = false
+    this.lastError = `USB adapter disconnected (${reason})`
+    recordNayax({ dir: 'INFO', note: `Reader link lost — ${reason}` })
   }
 
   isSaleInProgress(): boolean {
@@ -446,9 +462,18 @@ export class NayaxController extends EventEmitter {
     if (!this.port) throw new Error('Nayax serial port not open')
     console.log(`[Nayax] TX ${toHex(bytes)}`)
     recordNayax({ dir: 'TX', hex: toHex(bytes) })
-    await new Promise<void>((resolve, reject) =>
-      this.port!.write(Buffer.from([...bytes]), (err) => (err ? reject(err) : resolve()))
-    )
+    const port = this.port
+    try {
+      await withTimeout(
+        new Promise<void>((resolve, reject) => port.write(Buffer.from([...bytes]), (err) => (err ? reject(err) : resolve()))),
+        1500,
+        'Nayax write'
+      )
+    } catch (e) {
+      // A failed or hung WRITE means the adapter is gone, not that the reader said no.
+      this.handlePortLost(port, (e as Error).message)
+      throw e
+    }
   }
 
   private async endSession(): Promise<void> {

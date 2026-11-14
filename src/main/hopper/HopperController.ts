@@ -25,7 +25,7 @@
  */
 
 import { EventEmitter } from 'events'
-import { CctalkBus, CMD, ACK, NAK, ENABLE_CODE } from './cctalk'
+import { CctalkBus, CMD, ACK, NAK, ENABLE_CODE, withTimeout } from './cctalk'
 
 export type HopperStatus = 'ok' | 'empty' | 'jam' | 'offline' | 'initialising'
 
@@ -131,7 +131,25 @@ export class HopperController extends EventEmitter {
     this.bus = null
     this.connected = false
     for (const h of Object.values(hoppers)) { h.status = 'offline'; this.emitStatus(h.address) }
-    if (port?.isOpen) await new Promise<void>((r) => port.close(() => r()))
+    // A close on an adapter that has vanished may never call back — don't wait for ever.
+    if (port?.isOpen) await withTimeout(new Promise<void>((r) => port.close(() => r())), 1500, 'port close').catch(() => undefined)
+  }
+
+  /**
+   * The USB adapter went away while we were connected (cable pulled or knocked,
+   * adapter dropped out). Mark the bus as closed straight away so the watchdog
+   * reconnects, instead of carrying on "connected" to a port that no longer
+   * exists. `port` identifies which connection this is about, so a late event
+   * from an OLD connection can't tear down a new one.
+   */
+  private handlePortLost(port: unknown, reason: string): void {
+    if (this.port !== port) return
+    console.warn(`[hopper] serial port lost: ${reason}`)
+    this.port = null
+    this.bus = null
+    this.connected = false
+    this.lastError = `USB adapter disconnected (${reason})`
+    for (const h of Object.values(hoppers)) { h.status = 'offline'; this.emitStatus(h.address) }
   }
 
   // ------------------------------------------------------------------
@@ -192,7 +210,10 @@ export class HopperController extends EventEmitter {
 
     console.log(`[hopper] ccTalk serial port ${this.serialPath} opened`)
     this.port = port
-    this.bus = new CctalkBus(port)
+    this.bus = new CctalkBus(port, (err) => this.handlePortLost(port, err.message))
+    // Unplugging the adapter closes the port (and/or raises an error) later on.
+    port.on('close', () => this.handlePortLost(port, 'port closed'))
+    port.on('error', (err) => this.handlePortLost(port, err.message))
     this.connected = true
     this.emit('connected')
 

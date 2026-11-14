@@ -56,6 +56,22 @@ export interface SerialLike {
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * Give up on `work` after `ms`. A serial write to a USB adapter that has just
+ * been unplugged can simply never call back; without a limit that one stuck
+ * write blocked every later command — and the whole hardware watchdog — until
+ * the app was restarted.
+ */
+export function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${what} timed out`)), ms)
+    work.then(
+      (v) => { clearTimeout(t); resolve(v) },
+      (e) => { clearTimeout(t); reject(e) }
+    )
+  })
+}
+
 /** Build a ccTalk command frame (host → device) with a correct checksum. */
 export function buildFrame(dest: number, header: number, data: number[] = []): Buffer {
   const body = [dest & 0xff, data.length & 0xff, HOST_ADDR, header & 0xff, ...data.map((d) => d & 0xff)]
@@ -98,7 +114,12 @@ export class CctalkBus {
   private rx: Buffer = Buffer.alloc(0)
   private queue: Promise<unknown> = Promise.resolve()
 
-  constructor(port: SerialLike) {
+  /** Called when a WRITE fails or hangs — i.e. the adapter is gone, not merely a
+   *  hopper that didn't answer. Lets the controller mark the bus as lost. */
+  private onWriteFailure?: (err: Error) => void
+
+  constructor(port: SerialLike, onWriteFailure?: (err: Error) => void) {
+    this.onWriteFailure = onWriteFailure
     this.port = port
     this.port.on('data', (d: Buffer) => {
       this.rx = Buffer.concat([this.rx, d])
@@ -113,9 +134,16 @@ export class CctalkBus {
     const run = async (): Promise<CctalkReply> => {
       this.rx = Buffer.alloc(0) // drop any stale/echoed bytes before we transmit
       const frame = buildFrame(dest, header, data)
-      await new Promise<void>((resolve, reject) =>
-        this.port.write(frame, (err) => (err ? reject(err) : resolve()))
-      )
+      try {
+        await withTimeout(
+          new Promise<void>((resolve, reject) => this.port.write(frame, (err) => (err ? reject(err) : resolve()))),
+          1000,
+          'ccTalk write'
+        )
+      } catch (e) {
+        this.onWriteFailure?.(e as Error)
+        throw e
+      }
       const deadline = Date.now() + timeoutMs
       while (Date.now() < deadline) {
         const got = extractReply(this.rx)
