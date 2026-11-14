@@ -137,7 +137,28 @@ export class HopperController extends EventEmitter {
   // ------------------------------------------------------------------
   // Connect
   // ------------------------------------------------------------------
+  /** Why the last connect attempt failed ('' when connected) — shown in Diagnostics. */
+  private lastError = ''
+  getLastError(): string {
+    return this.lastError
+  }
+
   async connect(): Promise<void> {
+    try {
+      await this.connectInner()
+      this.lastError = ''
+    } catch (e) {
+      // ANY failure (port missing, busy, no permission, driver problem) leaves the
+      // bus closed and the hoppers offline, and records the reason so it can be
+      // read on the Diagnostics screen instead of needing a terminal.
+      this.connected = false
+      this.lastError = ((e as Error)?.message || String(e)).split('\n')[0]
+      for (const h of Object.values(hoppers)) { h.status = 'offline'; this.emitStatus(h.address) }
+      throw e
+    }
+  }
+
+  private async connectInner(): Promise<void> {
     if (this.isSimulated) {
       console.log('[hopper] Running in simulation mode')
       this.connected = true

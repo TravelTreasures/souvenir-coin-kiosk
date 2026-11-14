@@ -41,11 +41,11 @@ if (IS_PI && process.env.KIOSK_GPU !== 'off') {
 // mode). HOPPER_PORT is the preferred env var; MDB_PORT is kept as a fallback
 // for older configs. On Linux a USB serial adapter is usually /dev/ttyUSB0 —
 // run `ls /dev/serial/by-id/` on the kiosk to find the exact port.
-const HOPPER_SERIAL_PATH = process.env.HOPPER_PORT ?? process.env.MDB_PORT ?? '/dev/ttyUSB0'
+const HOPPER_SERIAL_PATH = process.env.HOPPER_PORT || process.env.MDB_PORT || '/dev/ttyUSB0'
 // Serial port for the Nayax card reader via the Waferstar MDB-RS232 adapter.
 // Also a USB serial port — a DIFFERENT one from the hopper interface. Use
 // stable names from `ls /dev/serial/by-id/` on the kiosk to pin each device.
-const NAYAX_SERIAL_PATH = process.env.NAYAX_PORT ?? '/dev/ttyUSB1'
+const NAYAX_SERIAL_PATH = process.env.NAYAX_PORT || '/dev/ttyUSB1'
 
 let appMode: AppMode = 'dev'
 let allowQuit = false
@@ -136,6 +136,8 @@ async function assignSerialPorts(): Promise<void> {
     console.log(`[ports] ${portInfo.note}`)
   } catch (e) {
     console.error('[ports] detection failed:', (e as Error)?.message ?? e)
+    // Show the reason on the Diagnostics screen (it used to stay on "Not checked yet").
+    portInfo = { ...portInfo, verified: false, note: `Port check failed: ${((e as Error)?.message || String(e)).split('\n')[0]}` }
   }
 }
 
@@ -228,7 +230,13 @@ function createSimulatorWindow(): void {
 function registerAppControlIPC(): void {
   ipcMain.handle('app:getMode', () => appMode)
   ipcMain.handle('app:getVersion', () => app.getVersion())
-  ipcMain.handle('app:getPortInfo', () => portInfo)
+  ipcMain.handle('app:getPortInfo', () => ({
+    ...portInfo,
+    hopperPort: mdb.getSerialPath() ?? '',
+    nayaxPort: nayax.getSerialPath() ?? '',
+    hopperError: mdb.getLastError(),
+    nayaxError: nayax.getLastError()
+  }))
   // Whether Chromium is drawing with the GPU (shown in Admin → Diagnostics).
   ipcMain.handle('app:getGraphicsStatus', () => {
     try {

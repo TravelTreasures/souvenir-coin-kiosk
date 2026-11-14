@@ -111,7 +111,7 @@ const kioskAPI = {
   })(),
   getGraphicsStatus: (): Promise<{ accelerated: boolean; detail: string }> =>
     ipcRenderer.invoke('app:getGraphicsStatus'),
-  getPortInfo: (): Promise<{ hopper: string; nayax: string; note: string; verified: boolean }> =>
+  getPortInfo: (): Promise<{ hopper: string; nayax: string; note: string; verified: boolean; hopperPort?: string; nayaxPort?: string; hopperError?: string; nayaxError?: string }> =>
     ipcRenderer.invoke('app:getPortInfo'),
   setMode: (mode: 'kiosk' | 'dev') => ipcRenderer.invoke('app:setMode', mode),
   quitApp: () => ipcRenderer.invoke('app:quit'),

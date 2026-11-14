@@ -56,13 +56,17 @@ function realPort(path: string): string {
 /** Open `path`, poll for a hopper, close it again. Never throws. `error` is set
  *  when the port could not even be opened (missing, busy, or no permission). */
 async function hopperAnswersOn(path: string): Promise<{ found: boolean; error?: string }> {
-  const { SerialPort } = await import('serialport')
-  const port = new SerialPort({ path, baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', autoOpen: false })
-  const close = (): Promise<void> => new Promise((r) => (port.isOpen ? port.close(() => r()) : r()))
+  // Everything is inside the try, including loading the serial driver and
+  // creating the port object, so a failure is REPORTED, never thrown.
+  let port: { isOpen: boolean; close: (cb: () => void) => void; open: (cb: (err?: Error | null) => void) => void; on: (ev: 'error', cb: () => void) => void } | null = null
+  const close = (): Promise<void> => new Promise((r) => (port && port.isOpen ? port.close(() => r()) : r()))
   try {
-    await new Promise<void>((resolve, reject) => port.open((err) => (err ? reject(err) : resolve())))
-    port.on('error', () => undefined) // never let a late serial error crash the app
-    const bus = new CctalkBus(port)
+    const { SerialPort } = await import('serialport')
+    const sp = new SerialPort({ path, baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', autoOpen: false })
+    port = sp as unknown as typeof port
+    await new Promise<void>((resolve, reject) => sp.open((err) => (err ? reject(err) : resolve())))
+    sp.on('error', () => undefined) // never let a late serial error crash the app
+    const bus = new CctalkBus(sp)
     for (let attempt = 0; attempt < 2; attempt++) {
       for (const addr of HOPPER_ADDRS) {
         try {

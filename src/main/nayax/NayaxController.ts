@@ -115,7 +115,24 @@ export class NayaxController extends EventEmitter {
     this.isSimulated = simulated
   }
 
+  /** Why the last connect attempt failed ('' when connected) — shown in Diagnostics. */
+  private lastError = ''
+  getLastError(): string {
+    return this.lastError
+  }
+
   async connect(): Promise<void> {
+    try {
+      await this.connectInner()
+      this.lastError = ''
+    } catch (e) {
+      this.connected = false
+      this.lastError = ((e as Error)?.message || String(e)).split('\n')[0]
+      throw e
+    }
+  }
+
+  private async connectInner(): Promise<void> {
     if (this.isSimulated) {
       console.log('[Nayax] Running in simulation mode')
       this.connected = true

@@ -73,7 +73,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   const [txTimeoutMsg, setTxTimeoutMsg] = useState('')
   const [appVersion, setAppVersion] = useState('')
   const [gfx, setGfx] = useState<{ accelerated: boolean; detail: string } | null>(null)
-  const [ports, setPorts] = useState<{ hopper: string; nayax: string; note: string; verified: boolean } | null>(null)
+  const [ports, setPorts] = useState<{ hopper: string; nayax: string; note: string; verified: boolean; hopperPort?: string; nayaxPort?: string; hopperError?: string; nayaxError?: string } | null>(null)
   // "Re-check hardware" feedback, so it is obvious the check really ran.
   const [checking, setChecking] = useState(false)
   const [checkedAt, setCheckedAt] = useState('')
@@ -694,6 +694,16 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
             {ports && (
               <p style={{ marginTop: 16, color: ports.verified ? 'var(--text-dim)' : 'var(--error-red)', fontSize: '0.85rem', lineHeight: 1.5 }}>
                 USB ports: {ports.note}
+              </p>
+            )}
+            {ports?.hopperError && (
+              <p style={{ marginTop: 6, color: 'var(--error-red)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                Hopper bus ({ports.hopperPort}): {ports.hopperError}
+              </p>
+            )}
+            {ports?.nayaxError && (
+              <p style={{ marginTop: 6, color: 'var(--error-red)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                Nayax ({ports.nayaxPort}): {ports.nayaxError}
               </p>
             )}
 
