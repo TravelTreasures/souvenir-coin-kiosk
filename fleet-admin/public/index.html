@@ -176,7 +176,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.29</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.30</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -1111,7 +1111,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
         ${r?`<button class="ghost" onclick="clearKioskRange()">Clear</button><span class="pill on">${r.from} → ${r.to}</span>`:''}
       </div>
       <div class="grid pcards">
-        ${productCard('All sales',s.totalSales,s.totalRevenue,'Completed sales in this period',{total:true,tag:'Total'})}
+        ${productCard('All sales',s.totalSales,s.totalRevenue,`Total coins dispensed: <b>${(s.coin1Units??s.coin1Sales)+(s.coin2Units??s.coin2Sales)}</b>`,{total:true,tag:'Total'})}
         ${productCard(coinName(k,1),s.coin1Sales,s.coin1Revenue,`Coins dispensed: <b>${s.coin1Units??s.coin1Sales}</b>`)}
         ${productCard(coinName(k,2),s.coin2Sales,s.coin2Revenue,`Coins dispensed: <b>${s.coin2Units??s.coin2Sales}</b>`)}
         ${(s.comboSales||k.comboEnabled)?productCard('Combo',s.comboSales||0,s.comboRevenue||0,'One of each coin per sale'):''}
