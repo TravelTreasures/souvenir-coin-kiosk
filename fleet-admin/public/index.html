@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0a1628" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Fleet Admin" />
 <title>Souvenir Coin Kiosk — Fleet Admin</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -133,22 +138,86 @@
   .empty{border:1px dashed var(--line);border-radius:16px}
   .crumbs{margin-bottom:16px}
   .login .card,.login{position:relative}
-  /* ---- Mobile / small screens ---- */
+  /* =====================================================================
+     v1.20.31 — phone and tablet layout. Desktop is unchanged; everything
+     here only applies on touch devices or narrower screens.
+     ===================================================================== */
+  html{-webkit-text-size-adjust:100%}
+  body{overflow-x:hidden}
+  img,canvas{max-width:100%}
+  /* Fingers, not a mouse: comfortable tap targets and no sticky hover lift. */
+  @media (pointer:coarse){
+    button.btn,button.ghost,.pchip,.tab,.nav-item,.crumbs a,select,
+    input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]){min-height:44px}
+    .nav-item,.tab{display:inline-flex;align-items:center}
+    input[type=checkbox]{width:22px;height:22px}
+    .kcard:hover{transform:none}
+    button,.nav-item,.tab,.pchip,.kcard,.crumbs a{-webkit-tap-highlight-color:rgba(201,162,39,.18);touch-action:manipulation}
+  }
+  /* The menu and tab strips scroll sideways — fade the right edge as a hint. */
+  @media (max-width:1100px){
+    .nav,.tabs{-webkit-overflow-scrolling:touch;position:relative}
+    .nav-item,.tab{flex:0 0 auto}
+    .nav{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);padding-right:24px}
+    /* wide data tables scroll sideways inside their card instead of off the screen */
+    table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;max-width:100%}
+  }
+  /* ---- Tablet (portrait and landscape) ---- */
+  @media (min-width:701px) and (max-width:1100px){
+    .wrap{padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
+    .topbar{padding:12px 20px 0;padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right))}
+    .cards{grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+    .cards.masonry{column-width:290px}
+    .metrics{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+    .pcards{grid-template-columns:repeat(2,1fr)}
+  }
+  /* ---- Phone ---- */
   @media (max-width:700px){
-    .wrap{padding:16px 14px}
-    .topbar{padding:12px 14px 0}
+    .wrap{padding:14px 12px calc(28px + env(safe-area-inset-bottom));padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
+    .topbar{padding:10px 12px 0;padding-top:max(10px,env(safe-area-inset-top));padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));row-gap:6px}
+    .brand{font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    .brand small{display:block;margin-left:0;font-size:.7rem}
+    .topbar>.row{gap:8px;flex-wrap:nowrap}
+    .topbar #whoami{display:none}
+    .topbar button.ghost{padding:6px 12px;min-height:36px;font-size:.85rem}
     .nav{margin:0 -6px}
-    .nav-item{padding:9px 11px 11px;font-size:.88rem}
+    .nav-item{padding:9px 12px 11px;font-size:.9rem}
     .ptitle{font-size:1.25rem}
-    .cards{grid-template-columns:1fr}
+    h2{font-size:1.2rem!important}
+    .grid{gap:12px}
+    .cards,.pcards{grid-template-columns:1fr}
     .cards.masonry{column-width:auto;column-count:1}
     .metrics{grid-template-columns:repeat(2,1fr)}
-    .card{padding:16px 15px}
-    .tab{padding:8px 12px;font-size:.85rem}
+    .card{padding:15px 14px;border-radius:14px}
+    .tabs{margin:14px 0 16px}
+    .tab{padding:8px 14px;font-size:.88rem}
     .val{font-size:1.25rem}
-    input,select{font-size:16px}            /* avoids iOS zoom-on-focus */
-    /* wide data tables scroll sideways instead of overflowing the screen */
-    table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
+    .kmetrics{gap:10px 16px}
+    .pills{gap:6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-left:-12px;margin-right:-12px;padding:0 12px}
+    .pills::-webkit-scrollbar{display:none}
+    .pchip{flex:0 0 auto;white-space:nowrap}
+    .crumbs{font-size:.85rem}
+    /* Page headers: title on top, status badges / buttons underneath. */
+    .row.between{align-items:flex-start}
+    .row.between>*{max-width:100%}
+    /* Form fields fill the width instead of keeping their desktop pixel sizes. */
+    input,select,textarea{font-size:16px;max-width:100%}        /* 16px avoids iOS zoom-on-focus */
+    .row>input:not([type=checkbox]):not([type=radio]),.row>select{flex:1 1 140px;min-width:0;width:auto!important}
+    .card[style*="max-width"],div[style*="max-width"]{max-width:100%!important}
+    button.btn{padding:11px 18px}
+    td,th{padding:9px 10px}
+    .login{margin:12vh auto 0;padding:0 16px}
+    .empty{padding:22px 14px}
+  }
+  /* Very small phones */
+  @media (max-width:380px){
+    .metrics{grid-template-columns:1fr 1fr;gap:10px}
+    .val{font-size:1.1rem}
+    .pcard .pc-stats{gap:10px}
+  }
+  /* Phone held sideways: keep the sticky header from eating the screen. */
+  @media (max-height:480px) and (orientation:landscape){
+    .topbar{position:static}
   }
 </style>
 </head>
@@ -176,7 +245,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.30</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.31</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -273,7 +342,14 @@ function renderNav(){
   const cur=view.name==='kiosk'?'fleet':view.name;
   const n=window._sysAlerts||0;
   const html=NAV.filter(i=>!i.admin||admin()).map(i=>`<a class="nav-item ${i.name===cur?'active':''}" onclick="go({name:'${i.name}'})">${i.label}${i.name==='monitoring'&&n>0?`<span class="badge">${n}</span>`:''}</a>`).join('');
-  if(el.innerHTML!==html) el.innerHTML=html;
+  if(el.innerHTML!==html){ el.innerHTML=html; centreActive(el); }
+}
+// On a phone the menu and tab strips scroll sideways: bring the selected item
+// into view (moves the strip only, never the page).
+function centreActive(strip){
+  if(!strip) return; const a=strip.querySelector('.active'); if(!a) return;
+  if(strip.scrollWidth<=strip.clientWidth) return;
+  strip.scrollLeft=Math.max(0,a.offsetLeft-(strip.clientWidth-a.offsetWidth)/2);
 }
 // System (hardware) alert types: label + colour. Low coin is a warning (amber);
 // everything else stops sales and is red.
@@ -941,7 +1017,7 @@ async function renderKiosk(el,id,isAuto){
   // (Compare a stored signature — NOT el.innerHTML, which the browser normalises
   // on read so it would never match and the frame would always rebuild.)
   const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,k.synced,k.configVersion,k.appliedConfigVersion,kioskTab,alertCount]);
-  if(!el.querySelector('#ktab')||el.dataset.kframe!==_fsig){ el.innerHTML=_frame; el.dataset.kframe=_fsig; }
+  if(!el.querySelector('#ktab')||el.dataset.kframe!==_fsig){ el.innerHTML=_frame; el.dataset.kframe=_fsig; centreActive(el.querySelector('.tabs')); }
   await renderKioskTab(id,k,alerts,isAuto);
 }
 async function renderKioskTab(id,k,alerts,isAuto){
