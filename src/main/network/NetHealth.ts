@@ -143,6 +143,28 @@ async function logDetails(): Promise<void> {
   if (j.ok && j.out) for (const line of j.out.split('\n').slice(-12)) note(`NM: ${short(line, 220)}`)
 }
 
+/**
+ * PREVENTION. The Network Log from a real kiosk showed how it gets stuck: while
+ * the router is unreachable for hours, Ubuntu keeps asking for an address
+ * ("connecting (getting IP configuration)" ↔ "disconnected"), then GIVES UP —
+ * and does not start again when the router returns. Tell Ubuntu never to give
+ * up: wait for an address for ever, and retry the connection for ever. Applied
+ * to every saved wired / Wi-Fi connection; takes effect the next time it
+ * connects. Done once per app run, when the network is known to be working.
+ */
+let hardened = false
+async function hardenProfiles(): Promise<void> {
+  if (hardened || !IS_LINUX) return
+  hardened = true
+  for (const p of await profiles()) {
+    if (p.type !== '802-3-ethernet' && p.type !== '802-11-wireless') continue
+    const cur = await run('nmcli', ['-g', 'ipv4.dhcp-timeout,connection.autoconnect-retries', 'connection', 'show', p.name])
+    if (/^2147483647\s+0$/.test(cur.out.trim())) continue // already set
+    const m = await run('nmcli', ['connection', 'modify', p.name, 'ipv4.dhcp-timeout', '2147483647', 'connection.autoconnect-retries', '0'], 15000)
+    note(`"${p.name}" set to never give up waiting for the router: ${m.ok ? 'done' : short(m.out)}`)
+  }
+}
+
 /** Bring ONE adapter back: re-activate, then every saved profile, then a new one. */
 async function reviveDevice(d: Dev): Promise<boolean> {
   const wired = d.type === 'ethernet'
@@ -167,7 +189,7 @@ async function reviveDevice(d: Dev): Promise<boolean> {
     // Nothing saved works — make a clean wired connection (automatic address).
     const name = `kiosk-wired-${d.dev}`
     if (!mine.some((x) => x.name === name)) {
-      const a = await run('nmcli', ['connection', 'add', 'type', 'ethernet', 'ifname', d.dev, 'con-name', name, 'autoconnect', 'yes', 'connection.autoconnect-retries', '0', 'ipv4.method', 'auto'], 20000)
+      const a = await run('nmcli', ['connection', 'add', 'type', 'ethernet', 'ifname', d.dev, 'con-name', name, 'autoconnect', 'yes', 'connection.autoconnect-retries', '0', 'ipv4.method', 'auto', 'ipv4.dhcp-timeout', '2147483647'], 20000)
       note(`new connection ${name}: ${a.ok ? 'created' : short(a.out)}`)
       const u = await run('nmcli', ['connection', 'up', name, 'ifname', d.dev], 60000)
       note(`"${name}" on ${d.dev}: ${u.ok ? 'activated' : short(u.out)}`)
@@ -232,7 +254,10 @@ export async function onSyncFailed(reason: string): Promise<void> {
       await repair(diag)
       // Back off: 2, 4, 8 … up to 30 minutes between repairs (longer for faults
       // that are probably not ours), so a real outage is not hammered.
-      const gap = Math.min(2 * 60_000 * 2 ** Math.min(repairs - 1, 4), 30 * 60_000) * (local ? 1 : 2)
+      // A fault on this computer is retried at least every 5 minutes however
+      // long the outage — so the kiosk is back within minutes of the router
+      // returning, not after a long back-off.
+      const gap = local ? Math.min(2 * 60_000 * 2 ** Math.min(repairs - 1, 4), 5 * 60_000) : Math.min(4 * 60_000 * 2 ** Math.min(repairs - 1, 4), 30 * 60_000)
       nextRepairAt = Date.now() + gap
       const again = await diagnose()
       summary = again.summary
@@ -248,6 +273,7 @@ export async function onSyncFailed(reason: string): Promise<void> {
 
 /** Called by the fleet sync every time it DID reach the server. */
 export function onSyncOk(): void {
+  void hardenProfiles()
   if (!offlineSince) return
   const mins = Math.max(1, Math.round((Date.now() - offlineSince) / 60000))
   note(`back online after ${mins} min${repairs ? ` (${repairs} repair${repairs > 1 ? 's' : ''} tried)` : ''}`)
