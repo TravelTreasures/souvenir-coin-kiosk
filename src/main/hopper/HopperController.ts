@@ -366,7 +366,7 @@ export class HopperController extends EventEmitter {
   async isReadyToDispense(address: number): Promise<boolean> {
     const h = hoppers[address]
     if (!h) return false
-    if (this.isSimulated) return h.coinCount > RESERVE_COINS
+    if (this.isSimulated) return h.status !== 'jam' && h.status !== 'offline' && h.coinCount > RESERVE_COINS
     if (!this.connected || !this.bus) return false
     const bus = this.bus
     try {

@@ -50,7 +50,17 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
   // ----------------------------------------------------------------
   // Payment
   // ----------------------------------------------------------------
-  ipcMain.handle('payment:request', async (_event, coinSelected: 1 | 2 | 3) => {
+  // Only ONE sale can run at a time. If the screen ever asks twice (a double
+  // tap, a re-drawn payment screen) the second request must not start a second
+  // card session on the reader — it simply gets the result of the sale already
+  // running.
+  let currentSale: Promise<unknown> | null = null
+  ipcMain.handle('payment:request', (_event, coinSelected: 1 | 2 | 3) => {
+    if (currentSale) return currentSale
+    currentSale = runSale(coinSelected).finally(() => { currentSale = null })
+    return currentSale
+  })
+  const runSale = async (coinSelected: 1 | 2 | 3): Promise<unknown> => {
     saleInProgress = true
     try {
     // coinSelected 1|2 = individual coin; 3 = Combo Sale (one of each).
@@ -115,6 +125,7 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
 
         if (isCombo) {
           // Dispense ONE of EACH coin. If the first fails, don't attempt the second.
+          const h1Before = mdb.getCoinCount(H1)
           const d1 = await mdb.dispense(H1, 1)
           const d2 = d1.success ? await mdb.dispense(H2, 1) : { success: false as const, error: 'SKIPPED_AFTER_FAILURE' }
           // Refresh BOTH tracked counts (stock movement) regardless of outcome.
@@ -129,6 +140,14 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
           // One or both coins failed → refund the whole combo (don't capture money
           // for an incomplete pair).
           const errorCode = (!d1.success ? d1.error : d2.error) ?? 'unknown_error'
+          // Coin 1 dropped but coin 2 did not: that coin has left hopper 1 without
+          // a completed sale. Log it, so the stock books still balance (refills −
+          // sales − logged removals = coins in the hopper) and staff can see why.
+          if (d1.success && !d2.success) {
+            try {
+              insertHopperEvent({ hopperId: 1, type: 'empty', quantity: 1, oldStock: h1Before, newStock: mdb.getCoinCount(H1), reason: `Combo not completed (${transactionId}): coin 1 dispensed, coin 2 failed`, operator: 'System (failed combo)', operatorRole: 'office' })
+            } catch { /* never let the log entry break the sale handling */ }
+          }
           updateDispenseResult(transactionId, mapDispenseCode(errorCode), 0)
           unresolvedTxId = null
           logError('critical', 'dispense', 'Combo payment approved but a coin was not dispensed', { transactionId, coin1Ok: d1.success, coin2Ok: d2.success, error: errorCode })
@@ -225,7 +244,7 @@ export function setupIPC(mdb: HopperController, nayax: NayaxController): void {
     } finally {
       saleInProgress = false
     }
-  })
+  }
 
   ipcMain.handle('payment:cancel', async () => {
     await nayax.cancelSale()

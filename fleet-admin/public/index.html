@@ -245,7 +245,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.31</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.32</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -1241,7 +1241,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
       '</tbody></table><div class="muted" style="font-size:.82rem;margin-top:8px">Reported by the kiosk and checked every minute. These clear by themselves once fixed (hopper refilled, device reconnected).</div></div>':'';
     if(!alerts.length){c.innerHTML=hw+'<div class="card ok">✓ No payment alerts — every charged sale was dispensed.</div>';return}
     c.innerHTML=hw+'<div class="label" style="margin-bottom:8px">Payment alerts — charged but coin not dispensed ('+alerts.length+')</div><table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
-      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(a.dispenseResult)}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${jsq(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
+      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(String(a.dispenseResult||'not confirmed').replace(/_/g,' '))}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${jsq(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
   }
   else if(kioskTab==='nayaxlog'){
     const log=await api('/api/kiosks/'+id+'/nayax-log');
@@ -1365,7 +1365,7 @@ async function sendRefill(id){
   if(!isFinite(quantity)||quantity<1){document.getElementById('rfmsg').textContent='Enter how many coins were added';return}
   if(!confirm('Add '+quantity+' coins to Hopper '+hopper+' on this kiosk?\\n\\nOnly do this if the coins have actually been loaded into the hopper.')){return}
   const r=await api('/api/kiosks/'+id+'/refill',{method:'POST',body:JSON.stringify({hopper,quantity})});
-  document.getElementById('rfmsg').textContent=r.error||('Sent — +'+quantity+' to hopper '+hopper+' (applies on next sync)');
+  document.getElementById('rfmsg').textContent=r.error||(r.queued?('Queued — +'+quantity+' to hopper '+hopper+' will be sent as soon as the kiosk confirms the refill before it'):('Sent — +'+quantity+' to hopper '+hopper+' (applies on next sync)'));
   if(!r.error)setTimeout(()=>render(),900);
 }
 async function schedulePrice(id){
@@ -1434,7 +1434,7 @@ async function removeMarketing(imageId){
   await api('/api/marketing/remove',{method:'POST',body:JSON.stringify({imageId})});
   render();
 }
-async function resolveAlert(tid){await api('/api/alerts/resolve',{method:'POST',body:JSON.stringify({transactionId:tid})});render()}
+async function resolveAlert(tid){await api('/api/alerts/resolve',{method:'POST',body:JSON.stringify({transactionId:tid,kioskId:view&&view.id})});render()}
 async function addMaint(id){const n=document.getElementById('mnote').value;if(!n)return;await api('/api/kiosks/'+id+'/maintenance',{method:'POST',body:JSON.stringify({note:n})});render()}
 function copyKey(){const t=document.getElementById('apikey').textContent;navigator.clipboard.writeText(t).then(()=>{document.getElementById('keymsg').textContent='Copied';setTimeout(()=>document.getElementById('keymsg').textContent='',1500)})}
 async function regenKey(id){

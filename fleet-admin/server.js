@@ -184,8 +184,12 @@ function monitorFleet() {
     for (const slot of [1, 2]) {
       const hop = hb?.[`hopper${slot}`]
       if (hop && typeof hop.coinCount === 'number') {
-        if (hop.coinCount <= 0) {
-          raiseAlert(k.id, `empty_${slot}`, `Hopper ${slot} EMPTY: 0 coins — refill needed`)
+        // The kiosk keeps the last coin in reserve and never sells it, so a
+        // count of 1 already means "sold out" for customers.
+        if (hop.coinCount <= 1) {
+          raiseAlert(k.id, `empty_${slot}`, hop.coinCount <= 0
+            ? `Hopper ${slot} EMPTY: 0 coins — refill needed`
+            : `Hopper ${slot} SOLD OUT: 1 coin left (kept in reserve, not sold) — refill needed`)
           clearAlert(k.id, `low_coin_${slot}`)
         } else if (hop.coinCount <= s.lowCoinThreshold) {
           raiseAlert(k.id, `low_coin_${slot}`, `Hopper ${slot} low: ${hop.coinCount} coins left`)
@@ -690,6 +694,14 @@ const server = createServer(async (req, res) => {
             kiosk.lastRefillByHopper = kiosk.lastRefillByHopper || {}
             kiosk.lastRefillByHopper[String(doneHopper)] = rec
             kiosk.refillQuantity = 0
+            // Send the next waiting refill, if any.
+            const next = (kiosk.refillQueue || []).shift()
+            if (next) {
+              kiosk.refillHopper = next.hopper
+              kiosk.refillQuantity = next.quantity
+              kiosk.refillVersion = (kiosk.refillVersion ?? 0) + 1
+              bumpConfig(kiosk)
+            }
           }
         }
         if (b.appVersion) { kiosk.appVersion = b.appVersion; kiosk.currentVersion = b.appVersion }
@@ -736,12 +748,37 @@ const server = createServer(async (req, res) => {
         const b = await body(req)
         const incoming = Array.isArray(b.transactions) ? b.transactions : []
         const existing = new Map(data().transactions.filter((t) => t.kioskId === kiosk.id).map((t) => [t.transactionId, t]))
+        // Never trust the shape of what arrives: a damaged or malicious payload
+        // must not be able to corrupt the money figures (a text "amount" used to
+        // turn revenue totals into text). Force every field to a safe type.
+        const word = (v, max = 40) => (v == null ? null : String(v).replace(/[^A-Za-z0-9_ .:-]/g, '').slice(0, max) || null)
+        const cleanTx = (t) => {
+          const amount = Math.round(Number(t.amount))
+          const coin = Number(t.coinSelected)
+          return {
+            ...t,
+            amount: Number.isFinite(amount) && amount > 0 ? Math.min(amount, 100_000_00) : 0,
+            coinSelected: coin === 2 ? 2 : coin === 3 ? 3 : 1,
+            paymentResult: word(t.paymentResult) || 'unknown',
+            dispenseResult: word(t.dispenseResult),
+            createdAt: word(t.createdAt, 30) || new Date().toISOString(),
+            nayaxAuthCode: word(t.nayaxAuthCode, 60),
+            nayaxCardType: word(t.nayaxCardType, 60)
+          }
+        }
         const raiseAlert = (t) => {
-          if (data().alerts.some((a) => a.kioskId === kiosk.id && a.transactionId === t.transactionId)) return
-          data().alerts.push({ id: nextId('alerts'), kioskId: kiosk.id, transactionId: t.transactionId, coinSelected: t.coinSelected, amount: t.amount, dispenseResult: t.dispenseResult, createdAt: t.createdAt, resolved: false })
+          const open = data().alerts.find((a) => a.kioskId === kiosk.id && a.transactionId === t.transactionId)
+          if (open) {
+            // Already alerted (e.g. as "not confirmed") — keep the reason current.
+            if (!open.resolved && t.dispenseResult && open.dispenseResult !== t.dispenseResult) open.dispenseResult = t.dispenseResult
+            return
+          }
+          data().alerts.push({ id: nextId('alerts'), kioskId: kiosk.id, transactionId: t.transactionId, coinSelected: t.coinSelected, amount: t.amount, dispenseResult: t.dispenseResult || 'not_confirmed', createdAt: t.createdAt, resolved: false })
         }
         let added = 0, updated = 0
-        for (const t of incoming) {
+        for (const raw of incoming) {
+          if (!raw || typeof raw !== 'object') continue
+          const t = cleanTx(raw)
           // A transaction id is shown in the dashboard, so only plain id
           // characters are kept — a stolen kiosk key cannot plant code in it.
           t.transactionId = String(t.transactionId ?? '').replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80)
@@ -755,6 +792,12 @@ const server = createServer(async (req, res) => {
               have.dispenseResult = t.dispenseResult
               updated++
               if (have.paymentResult === 'approved' && t.dispenseResult !== 'success') raiseAlert({ ...have })
+              // It was flagged "not confirmed" and the coin DID drop — close that alert.
+              if (t.dispenseResult === 'success') {
+                for (const a of data().alerts) {
+                  if (a.kioskId === kiosk.id && a.transactionId === have.transactionId && !a.resolved) { a.resolved = true; a.resolvedBy = 'auto: coin confirmed' }
+                }
+              }
             }
             continue
           }
@@ -762,7 +805,11 @@ const server = createServer(async (req, res) => {
           data().transactions.push(rec)
           existing.set(t.transactionId, rec)
           added++
-          if (t.paymentResult === 'approved' && t.dispenseResult && t.dispenseResult !== 'success') raiseAlert(t)
+          // Paid without a confirmed coin — a known failure OR no outcome at all.
+          // (The kiosk holds a sale back until its outcome is known, so a blank
+          // result here means it really is unknown.) Reconciliation counts both
+          // as "not dispensed", so both must show as an alert too.
+          if (t.paymentResult === 'approved' && t.dispenseResult !== 'success') raiseAlert(t)
         }
         // Hopper maintenance events (empty / refill) reported by the kiosk, for
         // central stock reconciliation. Deduped by the kiosk's local event id.
@@ -1422,8 +1469,11 @@ const server = createServer(async (req, res) => {
 
       if (req.method === 'GET' && !sub) {
         const hb = data().heartbeats[kiosk.id] || {}
+        // The kiosk's API key and master PIN are secrets: admins only. Viewers and
+        // refill operators get the kiosk without them.
+        const visible = isAdmin ? kiosk : (({ apiKey: _k, adminPin: _p, ...rest }) => rest)(kiosk)
         return json(res, 200, {
-          ...kiosk,
+          ...visible,
           destination: destById(kiosk.destinationId),
           online: isOnline(kiosk.id),
           synced: (kiosk.configVersion ?? 1) === (kiosk.appliedConfigVersion ?? 0),
@@ -1488,6 +1538,18 @@ const server = createServer(async (req, res) => {
         const hopper = Number(b.hopper) === 2 ? 2 : 1
         const quantity = Math.max(0, Math.round(Number(b.quantity) || 0))
         if (!(quantity > 0)) return json(res, 400, { error: 'quantity must be a positive number' })
+        // The kiosk takes ONE refill command at a time. If the previous one has
+        // not been confirmed yet, a new one used to overwrite it and those coins
+        // were silently lost from the count. Queue it instead; it is sent as soon
+        // as the kiosk confirms the one before (see the heartbeat handler).
+        const pending = (kiosk.refillQuantity || 0) > 0 && (kiosk.refillVersion ?? 0) > (kiosk.appliedRefillVersion ?? 0)
+        if (pending) {
+          kiosk.refillQueue = kiosk.refillQueue || []
+          if (kiosk.refillQueue.length >= 10) return json(res, 409, { error: 'Too many refills waiting for this kiosk — wait until it is back online' })
+          kiosk.refillQueue.push({ hopper, quantity, by: sess.username, at: new Date().toISOString() })
+          save()
+          return json(res, 201, { ok: true, hopper, quantity, queued: true, waiting: kiosk.refillQueue.length })
+        }
         kiosk.refillHopper = hopper
         kiosk.refillQuantity = quantity
         kiosk.refillVersion = (kiosk.refillVersion ?? 0) + 1
@@ -1555,8 +1617,10 @@ const server = createServer(async (req, res) => {
     // Resolve an alert
     if (req.method === 'POST' && path === '/api/alerts/resolve') {
       const b = await body(req)
-      const a = data().alerts.find((x) => x.transactionId === b.transactionId && !x.resolved)
-      if (a) { a.resolved = true; save() }
+      // The same transaction id can exist on two kiosks — resolve only the one
+      // the user is looking at when the dashboard says which kiosk it is.
+      const a = data().alerts.find((x) => x.transactionId === b.transactionId && !x.resolved && (!b.kioskId || x.kioskId === b.kioskId))
+      if (a) { a.resolved = true; a.resolvedBy = sess.username; save() }
       return json(res, 200, { ok: true })
     }
 

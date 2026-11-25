@@ -91,6 +91,8 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
         hwAlerts.push({ key: `fault${slot}`, level: 'red', label: 'Hopper fault', message: `Hopper ${slot} ${h.status === 'jam' ? 'JAMMED' : 'not responding'} — needs attention` })
       }
       if (h.coinCount <= 0) hwAlerts.push({ key: `empty${slot}`, level: 'red', label: 'Hopper empty', message: `Hopper ${slot} EMPTY: 0 coins — refill needed` })
+      // The last coin is kept in reserve and never sold, so 1 coin = sold out.
+      else if (h.coinCount === 1) hwAlerts.push({ key: `empty${slot}`, level: 'red', label: 'Hopper empty', message: `Hopper ${slot} SOLD OUT: 1 coin left (kept in reserve, not sold) — refill needed` })
       else if (h.coinCount <= lowLevel) hwAlerts.push({ key: `low${slot}`, level: 'amber', label: 'Low coin', message: `Hopper ${slot} low: ${h.coinCount} coins left` })
     }
   }
