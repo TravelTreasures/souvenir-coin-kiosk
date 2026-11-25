@@ -12,7 +12,7 @@
  * (via the Admin → System tab, or FLEET_URL / FLEET_API_KEY env vars).
  */
 
-import { app } from 'electron'
+import { app, net } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { getConfig, updateConfig, setPriceCents, setFleetStatus } from '../config/Config'
 import { getTransactionsSince, getHopperEventsSince, pruneSyncedTransactions, pruneSyncedHopperEvents, setHopperCount, insertHopperEvent } from '../database/Database'
@@ -62,6 +62,51 @@ function resolveSyncIntervalMs(): number {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
+
+// ---------------------------------------------------------------------------
+// Self-healing network calls.
+// A kiosk on weak Wi-Fi loses its connection and gets it back many times a
+// day. It must carry on by itself — never need a reboot. So every call to the
+// server:
+//   • gives up after a fixed time (a request on a dead connection would
+//     otherwise wait for minutes), and
+//   • after 3 failures in a row, alternates between the app's two independent
+//     network stacks (Node's and Chromium's). If one is left holding a stale
+//     connection or stale address after an outage, the other is not.
+// The last error is kept so Admin → System can show WHY it cannot connect.
+// ---------------------------------------------------------------------------
+const FETCH_TIMEOUT_MS = 20_000
+let netFailures = 0
+let lastNetError = ''
+type FetchInit = { method?: string; headers?: Record<string, string>; body?: string }
+
+async function fleetFetch(url: string, init: FetchInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const useChromium = netFailures >= 3 && netFailures % 2 === 1
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const opts = { ...init, signal: ctrl.signal }
+    const res = useChromium
+      ? ((await net.fetch(url, opts as never)) as unknown as Response)
+      : await fetch(url, opts)
+    netFailures = 0
+    lastNetError = ''
+    return res
+  } catch (e) {
+    netFailures++
+    const err = e as Error & { cause?: { code?: string; message?: string } }
+    const why = ctrl.signal.aborted ? `no answer in ${Math.round(timeoutMs / 1000)}s` : (err?.cause?.code || err?.cause?.message || err?.message || 'network error')
+    lastNetError = `${why}${useChromium ? ' (2nd route)' : ''}`
+    throw e
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+// One sync pass at a time. A pass "running" for over 3 minutes is stuck, not
+// busy — let a new one start so syncing can never stop for good.
+let syncBusy = false
+let syncStartedAt = 0
 // Signature of the Nayax logbook last pushed, so an unchanged buffer isn't re-sent.
 let lastNayaxSig = ''
 
@@ -81,7 +126,12 @@ export function startFleetSync(mdb: HopperController, nayax: NayaxController): v
   const intervalMs = resolveSyncIntervalMs()
   console.log(`[fleet-sync] enabled → ${c.fleetUrl} (every ${intervalMs / 1000}s)`)
   const tick = (): void => {
-    syncOnce(mdb, nayax).catch((e) => console.error('[fleet-sync] error:', e?.message ?? e))
+    if (syncBusy && Date.now() - syncStartedAt < 180_000) return
+    syncBusy = true
+    syncStartedAt = Date.now()
+    syncOnce(mdb, nayax)
+      .catch((e) => console.error('[fleet-sync] error:', e?.message ?? e))
+      .finally(() => { syncBusy = false })
   }
   tick()
   timer = setInterval(tick, intervalMs)
@@ -113,7 +163,7 @@ async function applyCoinImages(
     const assigned = coinImages[slot]
     if (assigned && assigned.id !== ids[slot]) {
       try {
-        const r = await fetch(`${base}${assigned.url}`, { headers })
+        const r = await fleetFetch(`${base}${assigned.url}`, { headers })
         if (!r.ok) continue
         const buf = Buffer.from(await r.arrayBuffer())
         const mime = r.headers.get('content-type') || 'image/png'
@@ -151,7 +201,7 @@ async function applyMarketing(
     const dataUrls: string[] = []
     for (const im of marketing.images || []) {
       try {
-        const r = await fetch(`${base}${im.url}`, { headers })
+        const r = await fleetFetch(`${base}${im.url}`, { headers })
         if (!r.ok) continue
         const buf = Buffer.from(await r.arrayBuffer())
         const mime = r.headers.get('content-type') || 'image/png'
@@ -175,7 +225,7 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
 
   // 1. Pull config and apply if the server has a newer version.
   try {
-    const res = await fetch(`${base}/api/ingest/config`, { headers })
+    const res = await fleetFetch(`${base}/api/ingest/config`, { headers })
     if (res.ok) {
       const conf = await res.json()
       if (typeof conf.configVersion === 'number' && conf.configVersion !== cfg.appliedConfigVersion) {
@@ -264,7 +314,7 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
     }
   } catch (e) {
     console.log(`[fleet-sync] cannot reach ${base} — is the central server running? (${(e as Error)?.message})`)
-    setFleetStatus({ state: 'offline', at: new Date().toISOString() })
+    setFleetStatus({ state: 'offline', at: new Date().toISOString(), detail: lastNetError })
   }
 
   // 2. Push new transactions + hopper maintenance events since the last synced ids.
@@ -304,7 +354,7 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         operatorRole: e.operatorRole,
         createdAt: e.createdAt
       }))
-      const res = await fetch(`${base}/api/ingest/sync`, {
+      const res = await fleetFetch(`${base}/api/ingest/sync`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ transactions, hopperEvents })
@@ -334,7 +384,7 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
       mdb.getHopperStatus(HopperController.HOPPER_2_ADDR)
     ])
     const ota = getUpdateReport()
-    await fetch(`${base}/api/ingest/heartbeat`, {
+    await fleetFetch(`${base}/api/ingest/heartbeat`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -361,7 +411,7 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
     const log = getNayaxLog()
     const sig = log.length + '|' + (log.length ? log[log.length - 1].at : '')
     if (log.length && sig !== lastNayaxSig) {
-      const res = await fetch(`${base}/api/ingest/nayax-log`, {
+      const res = await fleetFetch(`${base}/api/ingest/nayax-log`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ entries: log })

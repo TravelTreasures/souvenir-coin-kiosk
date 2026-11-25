@@ -114,7 +114,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
   }
   const [fleet, setFleet] = useState<{
     kioskId: string; fleetUrl: string; fleetApiKey: string; enabled: boolean; appliedConfigVersion: number
-    status?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number } | null
+    status?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number; detail?: string } | null
   }>({ kioskId: '', fleetUrl: '', fleetApiKey: '', enabled: false, appliedConfigVersion: 0, status: null })
   const [fleetMsg, setFleetMsg] = useState('')
   const [pinCur, setPinCur] = useState('')
@@ -1011,6 +1011,7 @@ export function AdminScreen({ onClose }: AdminScreenProps) {
                   <p style={{ color: s.color, fontSize: '0.85rem', marginBottom: 12 }}>
                     {s.label}
                     {st?.at ? ` · ${new Date(st.at).toLocaleTimeString()}` : ''}
+                    {st?.state === 'offline' && st.detail ? ` · ${st.detail} · retrying by itself` : ''}
                   </p>
                 )
               })()}

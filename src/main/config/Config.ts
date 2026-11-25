@@ -66,7 +66,7 @@ export interface KioskConfig {
   /** Highest local hopper-event id already pushed to the fleet server. */
   lastSyncedHopperEventId?: number
   /** Last sync outcome, for showing connection health in Admin → System. */
-  fleetStatus?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number }
+  fleetStatus?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number; detail?: string }
 
   /** Per-coin availability, pushed from the fleet server. A disabled coin is
    *  hidden on the kiosk so customers can't buy it (e.g. its hopper is empty). */

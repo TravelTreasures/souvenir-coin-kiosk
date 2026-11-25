@@ -93,7 +93,7 @@ const kioskAPI = {
   getFleet: (): Promise<{
     kioskId: string; fleetUrl: string; fleetApiKey: string
     appliedConfigVersion: number; lastSyncedTxId: number; enabled: boolean
-    status: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number } | null
+    status: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number; detail?: string } | null
   }> => ipcRenderer.invoke('fleet:get'),
   setFleet: (s: { kioskId: string; fleetUrl: string; fleetApiKey: string }) =>
     ipcRenderer.invoke('fleet:set', s),
