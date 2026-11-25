@@ -13,6 +13,7 @@
  */
 
 import { app, net } from 'electron'
+import { onSyncFailed, onSyncOk, getNetSummary, getNetLog } from '../network/NetHealth'
 import dns from 'node:dns'
 import https from 'node:https'
 import http from 'node:http'
@@ -200,6 +201,8 @@ let syncBusy = false
 let syncStartedAt = 0
 // Signature of the Nayax logbook last pushed, so an unchanged buffer isn't re-sent.
 let lastNayaxSig = ''
+// Same for this computer's network log.
+let lastNetLogSig = ''
 
 export function startFleetSync(mdb: HopperController, nayax: NayaxController): void {
   // Allow first-run provisioning via env vars.
@@ -317,6 +320,7 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
   // 1. Pull config and apply if the server has a newer version.
   try {
     const res = await fleetFetch(`${base}/api/ingest/config`, { headers })
+    onSyncOk() // any answer at all means this computer's network is working
     if (res.ok) {
       const conf = await res.json()
       if (typeof conf.configVersion === 'number' && conf.configVersion !== cfg.appliedConfigVersion) {
@@ -405,7 +409,11 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
     }
   } catch (e) {
     console.log(`[fleet-sync] cannot reach ${base} — is the central server running? (${(e as Error)?.message})`)
-    setFleetStatus({ state: 'offline', at: new Date().toISOString(), detail: lastNetError })
+    // Look at this computer's own network and repair it if that is where the
+    // fault is (runs in the background; never holds up the sync loop).
+    void onSyncFailed(lastNetError)
+    const net = getNetSummary()
+    setFleetStatus({ state: 'offline', at: new Date().toISOString(), detail: net ? `${lastNetError} · ${net}` : lastNetError })
   }
 
   // 2. Push new transactions + hopper maintenance events since the last synced ids.
@@ -492,6 +500,19 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         updateError: ota.updateError
       })
     })
+  } catch {
+    /* offline — retry next tick */
+  }
+
+  // 3a. Network log: what this computer's network did while it was offline, so
+  //     an outage on site can be read from the office. Only when it changed.
+  try {
+    const nlog = getNetLog()
+    const nsig = nlog.length + '|' + (nlog.length ? nlog[nlog.length - 1].at : '')
+    if (nlog.length && nsig !== lastNetLogSig) {
+      const res = await fleetFetch(`${base}/api/ingest/net-log`, { method: 'POST', headers, body: JSON.stringify({ entries: nlog }) })
+      if (res.ok || res.status === 404) lastNetLogSig = nsig // 404 = older server: don't retry every tick
+    }
   } catch {
     /* offline — retry next tick */
   }

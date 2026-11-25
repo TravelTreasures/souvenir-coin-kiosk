@@ -245,7 +245,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.32</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.34</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -995,8 +995,8 @@ async function renderKiosk(el,id,isAuto){
   if(isOperator()) kioskTab='refill';
   else if(!isAuto) kioskTab=kioskTab||'overview';
   const k=await api('/api/kiosks/'+id);
-  const tabs=isOperator()?['refill']:['overview','sales','inventory','refill','marketing','alerts','maintenance','transactions','nayaxlog'];
-  const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',refill:'Refill',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance',nayaxlog:'Nayax Log'};
+  const tabs=isOperator()?['refill']:['overview','sales','inventory','refill','marketing','alerts','maintenance','transactions','nayaxlog','netlog'];
+  const labels={overview:'Overview',transactions:'Transactions',sales:'Sales',inventory:'Inventory',refill:'Refill',marketing:'Marketing',alerts:'Alerts',maintenance:'Maintenance',nayaxlog:'Nayax Log',netlog:'Network Log'};
   const alerts=isOperator()?[]:await api('/api/kiosks/'+id+'/alerts');
   // Hardware alerts (empty/low hopper, offline, faults) come with the kiosk itself — no extra request.
   const sysAl=isOperator()?[]:(k.systemAlerts||[]);
@@ -1242,6 +1242,17 @@ async function renderKioskTab(id,k,alerts,isAuto){
     if(!alerts.length){c.innerHTML=hw+'<div class="card ok">✓ No payment alerts — every charged sale was dispensed.</div>';return}
     c.innerHTML=hw+'<div class="label" style="margin-bottom:8px">Payment alerts — charged but coin not dispensed ('+alerts.length+')</div><table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
       alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(String(a.dispenseResult||'not confirmed').replace(/_/g,' '))}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${jsq(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
+  }
+  else if(kioskTab==='netlog'){
+    const log=await api('/api/kiosks/'+id+'/net-log');
+    const entries=((log&&log.entries)||[]).slice().reverse();
+    const _gsig=JSON.stringify([log&&log.at,entries.length]);
+    if(isAuto && c.dataset.gsig===_gsig) return;
+    c.dataset.gsig=_gsig;
+    const colour=m=>/back online/.test(m)?'var(--green)':/repair|reconnect/.test(m)?'var(--gold-l)':/unreachable|offline|not |no /.test(m)?'var(--amber)':'inherit';
+    c.innerHTML=`
+      <div class="muted" style="font-size:.85rem;margin-bottom:10px">What this kiosk's own network connection did while it could not reach the server, and what it did to repair itself (newest first). The kiosk sends this once it is back online.${log&&log.at?' Updated '+ago(log.at)+'.':''}</div>
+      ${entries.length?`<div style="max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:10px"><table style="width:100%"><tbody>${entries.map(e=>`<tr><td class="dim" style="white-space:nowrap">${esc(nxLocal(e.at,true))}</td><td style="color:${colour(e.msg||'')};white-space:normal">${esc(e.msg||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No network problems recorded. Entries appear here after the kiosk has been offline and come back.</div>'}`;
   }
   else if(kioskTab==='nayaxlog'){
     const log=await api('/api/kiosks/'+id+'/nayax-log');

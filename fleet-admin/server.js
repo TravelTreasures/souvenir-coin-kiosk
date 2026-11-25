@@ -704,15 +704,28 @@ const server = createServer(async (req, res) => {
             }
           }
         }
+        // The kiosk came back on a DIFFERENT version than it last reported: that
+        // is an update (or rollback) that really happened — stamp when.
+        const versionChanged = !!b.appVersion && !!kiosk.currentVersion && kiosk.currentVersion !== '-' && b.appVersion !== kiosk.currentVersion
+        if (versionChanged) kiosk.lastUpdateAt = new Date().toISOString()
         if (b.appVersion) { kiosk.appVersion = b.appVersion; kiosk.currentVersion = b.appVersion }
         // OTA status the kiosk reports (idle/checking/downloading/installing/successful/failed).
-        if (typeof b.updateStatus === 'string') kiosk.updateStatus = b.updateStatus
-        if (typeof b.updateError === 'string') kiosk.updateError = b.updateError
-        if (b.updateStatus === 'successful') {
-          kiosk.lastUpdateAt = new Date().toISOString()
-          // Reached the approved version — clear the target so we don't keep nudging it.
-          if (kiosk.targetVersion && b.appVersion === kiosk.targetVersion) kiosk.targetVersion = ''
+        if (typeof b.updateStatus === 'string') {
+          let st = b.updateStatus
+          // A kiosk that is running the approved version cannot still be
+          // "installing" it — it restarted on the new version and is simply
+          // repeating its last status. Show it as done. (Kiosk apps up to
+          // 1.21.35 never reported "successful" themselves.)
+          const onTarget = !!kiosk.targetVersion && b.appVersion === kiosk.targetVersion
+          const midUpdate = ['installing', 'pending', 'downloading', 'checking'].includes(st)
+          // Also done: it said "installing" and has now come back on a new version.
+          if (versionChanged && midUpdate) kiosk.updateDoneVersion = b.appVersion
+          if (midUpdate && (onTarget || (!!b.appVersion && kiosk.updateDoneVersion === b.appVersion))) st = 'successful'
+          // Stamp the time once, when it first becomes successful — not on every heartbeat.
+          if (st === 'successful' && kiosk.updateStatus !== 'successful' && !versionChanged && !kiosk.lastUpdateAt) kiosk.lastUpdateAt = new Date().toISOString()
+          kiosk.updateStatus = st
         }
+        if (typeof b.updateError === 'string') kiosk.updateError = b.updateError
         // Reconcile price: adopt the kiosk's locally-set price ONLY when it is fully
         // synced (no command we pushed is still pending). This lets an on-site price
         // change flow back to the dashboard, without overwriting a price we just sent.
@@ -742,6 +755,18 @@ const server = createServer(async (req, res) => {
         if (!d.nayaxLogs) d.nayaxLogs = {}
         d.nayaxLogs[kiosk.id] = { at: new Date().toISOString(), entries }
         saveSoon() // diagnostics only: batched write
+        return json(res, 200, { ok: true, stored: entries.length })
+      }
+      // Network log push (diagnostics): what the kiosk's own network did during
+      // an outage and what it tried to repair. Latest buffer wins.
+      if (req.method === 'POST' && path === '/api/ingest/net-log') {
+        const b = await body(req)
+        const entries = (Array.isArray(b.entries) ? b.entries.slice(-300) : [])
+          .map((e) => ({ at: String(e?.at || '').slice(0, 30), msg: String(e?.msg || '').slice(0, 300) }))
+        const d = data()
+        if (!d.netLogs) d.netLogs = {}
+        d.netLogs[kiosk.id] = { at: new Date().toISOString(), entries }
+        saveSoon()
         return json(res, 200, { ok: true, stored: entries.length })
       }
       if (req.method === 'POST' && path === '/api/ingest/sync') {
@@ -1591,6 +1616,9 @@ const server = createServer(async (req, res) => {
         return json(res, 200, data().maintenance.filter((x) => x.kioskId === kiosk.id))
       }
       // Nayax logbook (diagnostics) — the reader's recent serial trace.
+      if (req.method === 'GET' && sub === 'net-log') {
+        return json(res, 200, (data().netLogs || {})[kiosk.id] || { at: null, entries: [] })
+      }
       if (req.method === 'GET' && sub === 'nayax-log') {
         const log = (data().nayaxLogs || {})[kiosk.id] || { at: null, entries: [] }
         return json(res, 200, log)

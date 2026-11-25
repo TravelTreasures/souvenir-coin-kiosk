@@ -242,6 +242,19 @@ function wireEvents(u: AutoUpdaterLike): void {
 /** Call once at startup with a predicate that returns true when the kiosk is idle. */
 export function initUpdater(idleFn: () => boolean): void {
   isIdle = idleFn
+  // Close out an update that was in progress when the app last stopped. The
+  // status is saved as "installing" just before the restart; without this it
+  // stayed "installing" for ever in Fleet Admin even though the new version was
+  // running, because nothing ever marked it done.
+  try {
+    const cfg = getConfig()
+    if (cfg.otaStatus === 'installing') {
+      if (cfg.otaPreviousVersion && cfg.otaPreviousVersion !== app.getVersion()) setOtaStatus('successful')
+      else setOtaStatus('failed', 'restarted on the same version — the update was not applied')
+    } else if (cfg.otaStatus === 'checking' || cfg.otaStatus === 'downloading' || cfg.otaStatus === 'pending') {
+      setOtaStatus('idle')
+    }
+  } catch { /* status is cosmetic — never block start-up */ }
 }
 
 /**
