@@ -245,7 +245,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.34</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.35</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -376,6 +376,10 @@ async function refreshSyncBadges(){
 }
 // Format a stored UTC ISO timestamp in the viewer's LOCAL time (the logs are
 // recorded in UTC; this shows them in your timezone). withDate adds the date.
+// Show a timestamp in THIS computer's local time. Times stamped by the server are
+// in UTC (they end in "Z") and used to be shown as-is — two hours behind South
+// African time. Times that came from a kiosk are already local and are left alone.
+function lt(s){s=String(s||'');if(/\dT\d.*(Z|[+-]\d\d:?\d\d)$/.test(s)){const d=new Date(s);if(!isNaN(d)){const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`}}return s.replace('T',' ').substring(0,19)}
 function nxLocal(iso,withDate){const d=new Date(iso);if(isNaN(d))return (iso||'').replace('T',' ');const p=n=>String(n).padStart(2,'0');const t=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,'0')}`;return withDate?`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${t}`:t;}
 function refresh(){
   if(!token) return;
@@ -515,7 +519,7 @@ async function renderMonitoring(el,isAuto){
       <div class="label">Active alerts (${alerts.length})</div>
       ${alerts.length?`<table style="margin-top:8px"><thead><tr><th>When</th><th>Kiosk</th><th>Type</th><th>Detail</th><th></th></tr></thead><tbody>
         ${alerts.map(a=>`<tr>
-          <td class="dim">${esc((a.createdAt||'').substring(0,19))}</td>
+          <td class="dim">${esc(lt(a.createdAt))}</td>
           <td>${esc(a.kioskName)}</td>
           <td>${sysPill(a.type)}</td>
           <td>${esc(a.message)}</td>
@@ -571,7 +575,7 @@ async function renderImages(el){
       ${hist.length?`<div class="label" style="margin-top:6px">Version history — click to revert</div>
       <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
         ${hist.map(i=>`<div style="text-align:center">
-          <img src="${i.url}" title="${esc((i.uploadedAt||'').substring(0,19))} by ${esc(i.uploadedBy||'')}" style="width:54px;height:54px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.05);border:${current&&current.id===i.id?'2px solid var(--gold)':'1px solid var(--line)'}"/>
+          <img src="${i.url}" title="${esc(lt(i.uploadedAt))} by ${esc(i.uploadedBy||'')}" style="width:54px;height:54px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.05);border:${current&&current.id===i.id?'2px solid var(--gold)':'1px solid var(--line)'}"/>
           <div><button class="ghost" style="padding:4px 10px;font-size:.78rem" onclick="assignImg(${i.id})">${current&&current.id===i.id?'current':'use'}</button></div>
         </div>`).join('')}
       </div>`:''}
@@ -692,11 +696,11 @@ async function renderUpdates(el){
        <input id="ota_channel" placeholder="channel" style="width:90px" value="${esc(settings.otaChannel||'stable')}"/>
      </div>
      <div class="row" style="margin-top:10px;gap:10px;align-items:center;flex-wrap:wrap">
-       <span class="muted">Window</span>
+       <span class="muted">Allowed install time</span>
        <input id="ota_ws" style="width:70px" value="${esc(settings.otaWindowStart||'02:00')}"/>
        <span class="muted">to</span>
        <input id="ota_we" style="width:70px" value="${esc(settings.otaWindowEnd||'04:00')}"/>
-       <label style="margin-left:8px"><input type="checkbox" id="ota_en" ${settings.otaWindowEnabled!==false?'checked':''}/> enforce window</label>
+       <label style="margin-left:8px"><input type="checkbox" id="ota_en" ${settings.otaWindowEnabled!==false?'checked':''}/> only install between these times</label>
        <button class="btn" onclick="saveOta()">Save</button>
        <span id="ota_msg" class="ok"></span>
      </div>
@@ -728,7 +732,7 @@ async function renderUpdates(el){
    </div>
 
    <div class="card"><table>
-     <thead><tr><th>Kiosk</th><th>Current</th><th>Target</th><th>Status</th><th>Window</th><th>Last update</th><th>Actions</th></tr></thead>
+     <thead><tr><th>Kiosk</th><th>Current</th><th>Target</th><th>Status</th><th>Allowed install time</th><th>Last update</th><th>Actions</th></tr></thead>
      <tbody id="otaStatusBody">${otaStatusRows(kiosks)}</tbody>
    </table><p class="muted" style="font-size:.75rem;margin-top:8px">* = this kiosk has its own window override. Status updates arrive with each kiosk heartbeat.</p></div>`;
 }
@@ -739,12 +743,12 @@ function otaStatusRows(kiosks){
        <td class="mono">${esc(k.currentVersion||'—')}</td>
        <td class="mono">${k.targetVersion?esc(k.targetVersion):'<span class="dim">—</span>'}</td>
        <td>${otaBadge(k.updateStatus)}${k.updateError?`<div class="err" style="font-size:.7rem">${esc(k.updateError)}</div>`:''}</td>
-       <td class="dim">${k.updateWindowEnabled?`${esc(k.updateWindowStart)}–${esc(k.updateWindowEnd)}`:'off'}${k.updateWindowOverride?' *':''}</td>
-       <td class="dim">${k.lastUpdateAt?esc(String(k.lastUpdateAt).substring(0,16).replace('T',' ')):'—'}</td>
+       <td class="dim">${k.updateWindowEnabled?`${esc(k.updateWindowStart)}–${esc(k.updateWindowEnd)} only`:'Any time (when idle)'}${k.updateWindowOverride?' *':''}</td>
+       <td class="dim">${k.lastUpdateAt?esc(lt(k.lastUpdateAt).substring(0,16)):'—'}</td>
        <td><div class="row">
          <button class="ghost" onclick="updateNowOta('${jsq(k.id)}')">Update now</button>
          <button class="ghost" onclick="rollbackOta('${jsq(k.id)}')">Rollback</button>
-         <button class="ghost" onclick="windowOta('${jsq(k.id)}')">Window</button>
+         <button class="ghost" onclick="windowOta('${jsq(k.id)}')">Set install time</button>
        </div></td>
      </tr>`).join('')||'<tr><td colspan="7" class="muted">No kiosks yet.</td></tr>';
 }
@@ -785,10 +789,10 @@ async function rollbackOta(kioskId){
   alert(r.error?r.error:('Rollback queued ('+r.rolledBack+')'));render();
 }
 async function windowOta(kioskId){
-  const start=prompt('Update window START (HH:MM). Leave blank to clear the override and use the fleet default:','02:00');
+  const start=prompt('This kiosk may install updates only from (HH:MM). Leave blank to go back to the fleet setting:','02:00');
   if(start===null)return;
   if(start===''){await api('/api/ota/window',{method:'POST',body:JSON.stringify({kioskId,clear:true})});render();return}
-  const end=prompt('Update window END (HH:MM):','04:00');if(end===null)return;
+  const end=prompt('…until (HH:MM):','04:00');if(end===null)return;
   await api('/api/ota/window',{method:'POST',body:JSON.stringify({kioskId,start,end,enabled:true})});render();
 }
 async function renderUsers(el){
@@ -1093,7 +1097,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
             <span id="prmsg" class="ok"></span>
           </div>
           <div style="margin-top:14px">
-            <div class="muted">${k.lastConfigUpdate ? 'Last change: ' + esc(k.lastConfigUpdate.substring(0,19)) : 'No remote changes yet'}</div>
+            <div class="muted">${k.lastConfigUpdate ? 'Last change: ' + esc(lt(k.lastConfigUpdate)) : 'No remote changes yet'}</div>
           </div>
           ${admin()?`
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
@@ -1237,11 +1241,11 @@ async function renderKioskTab(id,k,alerts,isAuto){
     c.dataset.asig=_asig;
     if(!alertCount){c.innerHTML='<div class="card ok">✓ No outstanding alerts.</div>';return}
     const hw=sysAl.length?'<div class="card" style="margin-bottom:18px"><div class="label">Hardware alerts ('+sysAl.length+')</div><table style="margin-top:8px"><thead><tr><th>Since</th><th>Type</th><th>Detail</th></tr></thead><tbody>'+
-      sysAl.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td>${sysPill(a.type)}</td><td>${esc(a.message)}</td></tr>`).join('')+
+      sysAl.map(a=>`<tr><td class="dim">${esc(lt(a.createdAt))}</td><td>${sysPill(a.type)}</td><td>${esc(a.message)}</td></tr>`).join('')+
       '</tbody></table><div class="muted" style="font-size:.82rem;margin-top:8px">Reported by the kiosk and checked every minute. These clear by themselves once fixed (hopper refilled, device reconnected).</div></div>':'';
     if(!alerts.length){c.innerHTML=hw+'<div class="card ok">✓ No payment alerts — every charged sale was dispensed.</div>';return}
     c.innerHTML=hw+'<div class="label" style="margin-bottom:8px">Payment alerts — charged but coin not dispensed ('+alerts.length+')</div><table><thead><tr><th>Date/Time</th><th>Transaction</th><th>Coin</th><th>Amount</th><th>Issue</th><th></th></tr></thead><tbody>'+
-      alerts.map(a=>`<tr><td class="dim">${esc((a.createdAt||'').substring(0,19))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(String(a.dispenseResult||'not confirmed').replace(/_/g,' '))}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${jsq(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
+      alerts.map(a=>`<tr><td class="dim">${esc(lt(a.createdAt))}</td><td class="mono">${esc(a.transactionId)}</td><td>${esc(coinName(k,a.coinSelected))}</td><td>${rand(a.amount)}</td><td class="err">${esc(String(a.dispenseResult||'not confirmed').replace(/_/g,' '))}</td><td>${admin()?`<button class="ghost" onclick="resolveAlert('${jsq(a.transactionId)}')">Resolve</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')+'</tbody></table>';
   }
   else if(kioskTab==='netlog'){
     const log=await api('/api/kiosks/'+id+'/net-log');
@@ -1280,14 +1284,14 @@ async function renderKioskTab(id,k,alerts,isAuto){
     if(isAuto && c.dataset.mtsig===_mtsig) return;
     c.dataset.mtsig=_mtsig;
     c.innerHTML=(admin()?`<div class="row" style="margin-bottom:16px"><input id="mnote" placeholder="Add maintenance note…" style="flex:1"/><button class="btn" onclick="addMaint('${id}')">Add</button></div>`:'')+
-      (m.length?'<table><thead><tr><th>Date/Time</th><th>By</th><th>Note</th></tr></thead><tbody>'+m.map(x=>`<tr><td class="dim">${esc((x.createdAt||'').substring(0,19))}</td><td>${esc(x.by)}</td><td>${esc(x.note)}</td></tr>`).join('')+'</tbody></table>':'<div class="empty">No maintenance records.</div>');
+      (m.length?'<table><thead><tr><th>Date/Time</th><th>By</th><th>Note</th></tr></thead><tbody>'+m.map(x=>`<tr><td class="dim">${esc(lt(x.createdAt))}</td><td>${esc(x.by)}</td><td>${esc(x.note)}</td></tr>`).join('')+'</tbody></table>':'<div class="empty">No maintenance records.</div>');
   }
   else if(kioskTab==='refill'){
     const hb=k.health||{};
     const h1=hb.hopper1?hb.hopper1.coinCount:null, h2=hb.hopper2?hb.hopper2.coinCount:null;
     const pending=(k.refillVersion??0)>(k.appliedRefillVersion??0);
     const byHop=k.lastRefillByHopper||{};
-    const lastLine=h=>byHop[String(h)]?('✓ Hopper '+h+': +'+byHop[String(h)].quantity+' on '+esc((byHop[String(h)].at||'').replace('T',' ').substring(0,19))):'';
+    const lastLine=h=>byHop[String(h)]?('✓ Hopper '+h+': +'+byHop[String(h)].quantity+' on '+esclt((byHop[String(h)].at))):'';
     const lastBoth=[lastLine(1),lastLine(2)].filter(Boolean).join('<br>');
     const _rfsig=JSON.stringify([h1,h2,pending,byHop,admin()]);
     if(isAuto && c.dataset.rfsig===_rfsig) return;
@@ -1296,7 +1300,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
     const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
     const mm=/^(\d{4})-(\d{2})$/.exec(log&&log.month||'');
     const monthName=mm?MONTHS[+mm[2]-1]+' '+mm[1]:'this month';
-    const logRows=(log.events||[]).map(e=>`<tr><td>${esc((e.createdAt||'').replace('T',' ').substring(0,19))}</td><td>Hopper ${e.hopperId}${e.hopperId==1||e.hopperId==2?' — '+esc(coinName(k,e.hopperId)):''}</td><td class="ok">+${e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td></tr>`).join('');
+    const logRows=(log.events||[]).map(e=>`<tr><td>${esclt((e.createdAt))}</td><td>Hopper ${e.hopperId}${e.hopperId==1||e.hopperId==2?' — '+esc(coinName(k,e.hopperId)):''}</td><td class="ok">+${e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td></tr>`).join('');
     const logTable=`<div class="card" style="margin-top:16px">
       <div class="row between" style="margin-bottom:10px"><div class="label">Refill log — ${esc(monthName)}</div><span class="muted">${log.count||0} refill${(log.count||0)===1?'':'s'} · +${log.total||0} coins</span></div>
       ${(log.events||[]).length?`<table><thead><tr><th>When</th><th>Hopper</th><th>Added</th><th>Stock</th><th>By</th></tr></thead><tbody>${logRows}</tbody></table>`:'<div class="muted">No refills yet this month.</div>'}
@@ -1352,7 +1356,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
       <h3 style="font-size:1.05rem;margin:22px 0 10px">Hopper maintenance (reported by kiosk)</h3>
       <div class="card">
       ${(inv.maintenance&&inv.maintenance.length)?`<table><thead><tr><th>Date/Time</th><th>Hopper</th><th>Action</th><th>Qty</th><th>Stock</th><th>Operator</th><th>Role</th></tr></thead><tbody>
-        ${inv.maintenance.map(e=>`<tr><td>${esc((e.createdAt||'').replace('T',' ').substring(0,19))}</td><td>${e.hopperId}</td><td class="${e.type==='refill'?'ok':''}" style="${e.type==='empty'?'color:var(--amber)':''}">${e.type==='refill'?'Refill':'Empty (maint.)'}</td><td>${e.type==='refill'?'+'+e.quantity:e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td><td class="dim">${esc(e.operatorRole||'-')}</td></tr>`).join('')}
+        ${inv.maintenance.map(e=>`<tr><td>${esclt((e.createdAt))}</td><td>${e.hopperId}</td><td class="${e.type==='refill'?'ok':''}" style="${e.type==='empty'?'color:var(--amber)':''}">${e.type==='refill'?'Refill':'Empty (maint.)'}</td><td>${e.type==='refill'?'+'+e.quantity:e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td><td class="dim">${esc(e.operatorRole||'-')}</td></tr>`).join('')}
       </tbody></table><p class="muted" style="font-size:.8rem;margin-top:10px">Emptying and refilling done on the kiosk. These are maintenance actions, not sales.</p>`
         :'<div class="muted" style="padding:12px 0">No hopper maintenance reported yet.</div>'}
       </div>`;
@@ -1363,7 +1367,7 @@ function hopper(label,h){if(!h)return `<div class="row between" style="padding:8
 function txTable(rows,k){
   if(!rows.length)return '<div class="empty">No transactions.</div>';
   return '<table><thead><tr><th>Date/Time</th><th>Transaction ID</th><th>Coin</th><th>Amount</th><th>Payment</th><th>Dispense</th></tr></thead><tbody>'+
-    rows.map(t=>`<tr><td class="dim">${esc((t.createdAt||'').substring(0,19))}</td><td class="mono">${esc(t.transactionId)}</td><td>${esc(coinName(k,t.coinSelected))}</td><td>${rand(t.amount)}</td><td class="${t.paymentResult==='approved'?'ok':'err'}">${esc(t.paymentResult)}</td><td class="${t.dispenseResult==='success'?'ok':((t.dispenseResult||t.paymentResult==='approved')?'err':'dim')}">${esc(t.dispenseResult||(t.paymentResult==='approved'?'not confirmed':'—'))}</td></tr>`).join('')+'</tbody></table>';
+    rows.map(t=>`<tr><td class="dim">${esc(lt(t.createdAt))}</td><td class="mono">${esc(t.transactionId)}</td><td>${esc(coinName(k,t.coinSelected))}</td><td>${rand(t.amount)}</td><td class="${t.paymentResult==='approved'?'ok':'err'}">${esc(t.paymentResult)}</td><td class="${t.dispenseResult==='success'?'ok':((t.dispenseResult||t.paymentResult==='approved')?'err':'dim')}">${esc(t.dispenseResult||(t.paymentResult==='approved'?'not confirmed':'—'))}</td></tr>`).join('')+'</tbody></table>';
 }
 async function setStatus(id){const v=document.getElementById('opstat').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({operationalStatus:v})});document.getElementById('opmsg').textContent='Updated';setTimeout(()=>render(),600)}
 async function setDest(id){const v=document.getElementById('kdest').value;await api('/api/kiosks/'+id,{method:'PATCH',body:JSON.stringify({destinationId:v})});document.getElementById('kmetamsg').textContent='Destination saved';setTimeout(()=>render(),600)}
@@ -1528,7 +1532,7 @@ async function renderGlobal(el){
 
 /* ---------- Charts + Excel/PDF export ---------- */
 let _chart=null;
-const dt=s=>(s||'').replace('T',' ').substring(0,19);
+const dt=s=>lt(s);
 function drawRevenueChart(canvasId,series){
   const cv=document.getElementById(canvasId);
   if(!cv||!window.Chart)return;
