@@ -721,6 +721,10 @@ const server = createServer(async (req, res) => {
           // Also done: it said "installing" and has now come back on a new version.
           if (versionChanged && midUpdate) kiosk.updateDoneVersion = b.appVersion
           if (midUpdate && (onTarget || (!!b.appVersion && kiosk.updateDoneVersion === b.appVersion))) st = 'successful'
+          // A new version has been approved but the kiosk is not on it yet: an
+          // old "successful"/"idle" (from the PREVIOUS update) must not be shown
+          // as if the new one were done — it is still waiting.
+          if (!!kiosk.targetVersion && !!b.appVersion && !onTarget && (st === 'successful' || st === 'idle')) st = 'pending'
           // Stamp the time once, when it first becomes successful — not on every heartbeat.
           if (st === 'successful' && kiosk.updateStatus !== 'successful' && !versionChanged && !kiosk.lastUpdateAt) kiosk.lastUpdateAt = new Date().toISOString()
           kiosk.updateStatus = st
