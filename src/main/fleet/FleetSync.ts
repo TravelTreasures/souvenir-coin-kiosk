@@ -13,6 +13,9 @@
  */
 
 import { app, net } from 'electron'
+import dns from 'node:dns'
+import https from 'node:https'
+import http from 'node:http'
 import { is } from '@electron-toolkit/utils'
 import { getConfig, updateConfig, setPriceCents, setFleetStatus } from '../config/Config'
 import { getTransactionsSince, getHopperEventsSince, pruneSyncedTransactions, pruneSyncedHopperEvents, setHopperCount, insertHopperEvent } from '../database/Database'
@@ -65,22 +68,90 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 // ---------------------------------------------------------------------------
 // Self-healing network calls.
-// A kiosk on weak Wi-Fi loses its connection and gets it back many times a
-// day. It must carry on by itself — never need a reboot. So every call to the
-// server:
+// A kiosk on weak Wi-Fi / mobile data loses its connection and gets it back
+// many times a day. It must carry on by itself — never need a reboot. So every
+// call to the server:
 //   • gives up after a fixed time (a request on a dead connection would
-//     otherwise wait for minutes), and
+//     otherwise wait for minutes);
 //   • after 3 failures in a row, alternates between the app's two independent
-//     network stacks (Node's and Chromium's). If one is left holding a stale
-//     connection or stale address after an outage, the other is not.
+//     network stacks (Node's and Chromium's);
+//   • and if the computer's own name lookup (DNS) is what is failing — seen on a
+//     real kiosk as "EAI_AGAIN" for hours after the internet came back, until
+//     the PC was rebooted — it goes AROUND it: it asks public DNS servers
+//     directly, or uses the server address it remembered from the last good
+//     connection, and connects straight to that address. The connection is
+//     still HTTPS and the certificate is still checked against the server name.
 // The last error is kept so Admin → System can show WHY it cannot connect.
 // ---------------------------------------------------------------------------
 const FETCH_TIMEOUT_MS = 20_000
 let netFailures = 0
 let lastNetError = ''
+let lastIpSavedAt = 0
 type FetchInit = { method?: string; headers?: Record<string, string>; body?: string }
 
+const DNS_CODES = ['EAI_AGAIN', 'ENOTFOUND', 'EAI_FAIL', 'EAI_NODATA', 'ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED']
+const errCode = (e: unknown): string => {
+  const err = e as Error & { code?: string; cause?: { code?: string; message?: string } }
+  return String(err?.cause?.code || err?.code || err?.cause?.message || err?.message || 'network error')
+}
+const isIp = (h: string): boolean => /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':')
+
+/** Remember the server's address while things work (at most every 10 minutes). */
+function rememberServerIp(host: string): void {
+  if (isIp(host) || host === 'localhost' || Date.now() - lastIpSavedAt < 10 * 60_000) return
+  lastIpSavedAt = Date.now()
+  dns.promises.lookup(host, { family: 4 })
+    .then((r) => { if (r?.address && r.address !== getConfig().fleetLastIp) updateConfig({ fleetLastIp: r.address }) })
+    .catch(() => undefined)
+}
+
+/** Find the server's address WITHOUT the computer's own DNS. */
+async function resolveAround(host: string): Promise<{ ip: string; how: string } | null> {
+  try {
+    const r = new dns.promises.Resolver({ timeout: 4000, tries: 1 })
+    r.setServers(['1.1.1.1', '8.8.8.8', '9.9.9.9'])
+    const ips = await r.resolve4(host)
+    if (ips?.[0]) return { ip: ips[0], how: 'public DNS' }
+  } catch { /* fall through to the remembered address */ }
+  const saved = getConfig().fleetLastIp
+  return saved ? { ip: saved, how: 'remembered address' } : null
+}
+
+/** One request straight to an IP address, still as HTTPS for the real host name. */
+function directRequest(url: string, ip: string, init: FetchInit, timeoutMs: number): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url)
+    const secure = u.protocol === 'https:'
+    const body = init.body
+    const req = (secure ? https : http).request({
+      host: ip,
+      port: u.port ? Number(u.port) : secure ? 443 : 80,
+      path: u.pathname + u.search,
+      method: init.method || 'GET',
+      headers: { ...(init.headers || {}), Host: u.host, ...(body != null ? { 'Content-Length': Buffer.byteLength(body) } : {}) },
+      ...(secure ? { servername: u.hostname } : {}),
+      timeout: timeoutMs
+    }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => {
+        const headers = new Headers()
+        for (const [k, v] of Object.entries(res.headers)) if (typeof v === 'string') headers.set(k, v)
+        const status = res.statusCode || 502
+        // 204/304 responses may not carry a body.
+        resolve(new Response(status === 204 || status === 304 ? null : Buffer.concat(chunks), { status, headers }))
+      })
+      res.on('error', reject)
+    })
+    req.on('timeout', () => req.destroy(new Error(`no answer in ${Math.round(timeoutMs / 1000)}s`)))
+    req.on('error', reject)
+    if (body != null) req.write(body)
+    req.end()
+  })
+}
+
 async function fleetFetch(url: string, init: FetchInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const host = new URL(url).hostname
   const useChromium = netFailures >= 3 && netFailures % 2 === 1
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
@@ -91,12 +162,32 @@ async function fleetFetch(url: string, init: FetchInit = {}, timeoutMs = FETCH_T
       : await fetch(url, opts)
     netFailures = 0
     lastNetError = ''
+    rememberServerIp(host)
     return res
   } catch (e) {
+    const code = errCode(e)
+    const timedOut = ctrl.signal.aborted
+    // Name lookup failed (or, on the Chromium route, any failure): go around the
+    // computer's DNS and connect to the server's address directly.
+    const dnsTrouble = !timedOut && (DNS_CODES.some((c) => code.includes(c)) || code.includes('ERR_NAME_NOT_RESOLVED') || useChromium)
+    if (dnsTrouble && !isIp(host)) {
+      const around = await resolveAround(host)
+      if (around) {
+        try {
+          const res = await directRequest(url, around.ip, init, timeoutMs)
+          netFailures = 0
+          lastNetError = ''
+          console.log(`[fleet-sync] this computer's DNS is failing (${code}) — reached the server directly via ${around.how}`)
+          return res
+        } catch (e2) {
+          netFailures++
+          lastNetError = `${code}; direct route (${around.how}) also failed: ${errCode(e2)}`
+          throw e2
+        }
+      }
+    }
     netFailures++
-    const err = e as Error & { cause?: { code?: string; message?: string } }
-    const why = ctrl.signal.aborted ? `no answer in ${Math.round(timeoutMs / 1000)}s` : (err?.cause?.code || err?.cause?.message || err?.message || 'network error')
-    lastNetError = `${why}${useChromium ? ' (2nd route)' : ''}`
+    lastNetError = `${timedOut ? `no answer in ${Math.round(timeoutMs / 1000)}s` : code}${useChromium ? ' (2nd route)' : ''}`
     throw e
   } finally {
     clearTimeout(t)

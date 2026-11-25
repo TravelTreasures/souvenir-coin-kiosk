@@ -65,6 +65,9 @@ export interface KioskConfig {
   dispenseResyncDone?: boolean
   /** Highest local hopper-event id already pushed to the fleet server. */
   lastSyncedHopperEventId?: number
+  /** The fleet server's address from the last good connection — used to reach
+   *  it directly when this computer's DNS is not answering. */
+  fleetLastIp?: string
   /** Last sync outcome, for showing connection health in Admin → System. */
   fleetStatus?: { state: 'ok' | 'auth_failed' | 'error' | 'offline'; at: string; code?: number; detail?: string }
 
