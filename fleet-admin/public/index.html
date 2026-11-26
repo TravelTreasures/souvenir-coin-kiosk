@@ -245,7 +245,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.36</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.37</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -1291,7 +1291,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
     const h1=hb.hopper1?hb.hopper1.coinCount:null, h2=hb.hopper2?hb.hopper2.coinCount:null;
     const pending=(k.refillVersion??0)>(k.appliedRefillVersion??0);
     const byHop=k.lastRefillByHopper||{};
-    const lastLine=h=>byHop[String(h)]?('✓ Hopper '+h+': +'+byHop[String(h)].quantity+' on '+esclt((byHop[String(h)].at))):'';
+    const lastLine=h=>byHop[String(h)]?('✓ Hopper '+h+': +'+byHop[String(h)].quantity+' on '+esc(lt(byHop[String(h)].at))):'';
     const lastBoth=[lastLine(1),lastLine(2)].filter(Boolean).join('<br>');
     const _rfsig=JSON.stringify([h1,h2,pending,byHop,admin()]);
     if(isAuto && c.dataset.rfsig===_rfsig) return;
@@ -1300,7 +1300,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
     const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
     const mm=/^(\d{4})-(\d{2})$/.exec(log&&log.month||'');
     const monthName=mm?MONTHS[+mm[2]-1]+' '+mm[1]:'this month';
-    const logRows=(log.events||[]).map(e=>`<tr><td>${esclt((e.createdAt))}</td><td>Hopper ${e.hopperId}${e.hopperId==1||e.hopperId==2?' — '+esc(coinName(k,e.hopperId)):''}</td><td class="ok">+${e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td></tr>`).join('');
+    const logRows=(log.events||[]).map(e=>`<tr><td>${esc(lt(e.createdAt))}</td><td>Hopper ${e.hopperId}${e.hopperId==1||e.hopperId==2?' — '+esc(coinName(k,e.hopperId)):''}</td><td class="ok">+${e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td></tr>`).join('');
     const logTable=`<div class="card" style="margin-top:16px">
       <div class="row between" style="margin-bottom:10px"><div class="label">Refill log — ${esc(monthName)}</div><span class="muted">${log.count||0} refill${(log.count||0)===1?'':'s'} · +${log.total||0} coins</span></div>
       ${(log.events||[]).length?`<table><thead><tr><th>When</th><th>Hopper</th><th>Added</th><th>Stock</th><th>By</th></tr></thead><tbody>${logRows}</tbody></table>`:'<div class="muted">No refills yet this month.</div>'}
@@ -1356,7 +1356,7 @@ async function renderKioskTab(id,k,alerts,isAuto){
       <h3 style="font-size:1.05rem;margin:22px 0 10px">Hopper maintenance (reported by kiosk)</h3>
       <div class="card">
       ${(inv.maintenance&&inv.maintenance.length)?`<table><thead><tr><th>Date/Time</th><th>Hopper</th><th>Action</th><th>Qty</th><th>Stock</th><th>Operator</th><th>Role</th></tr></thead><tbody>
-        ${inv.maintenance.map(e=>`<tr><td>${esclt((e.createdAt))}</td><td>${e.hopperId}</td><td class="${e.type==='refill'?'ok':''}" style="${e.type==='empty'?'color:var(--amber)':''}">${e.type==='refill'?'Refill':'Empty (maint.)'}</td><td>${e.type==='refill'?'+'+e.quantity:e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td><td class="dim">${esc(e.operatorRole||'-')}</td></tr>`).join('')}
+        ${inv.maintenance.map(e=>`<tr><td>${esc(lt(e.createdAt))}</td><td>${e.hopperId}</td><td class="${e.type==='refill'?'ok':''}" style="${e.type==='empty'?'color:var(--amber)':''}">${e.type==='refill'?'Refill':'Empty (maint.)'}</td><td>${e.type==='refill'?'+'+e.quantity:e.quantity}</td><td>${e.oldStock} → ${e.newStock}</td><td>${esc(e.operator||'-')}</td><td class="dim">${esc(e.operatorRole||'-')}</td></tr>`).join('')}
       </tbody></table><p class="muted" style="font-size:.8rem;margin-top:10px">Emptying and refilling done on the kiosk. These are maintenance actions, not sales.</p>`
         :'<div class="muted" style="padding:12px 0">No hopper maintenance reported yet.</div>'}
       </div>`;
