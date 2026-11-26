@@ -1,0 +1,12 @@
+#!/bin/bash
+# Fake NetworkManager for the self-repair test. State in $NETSTATE (up|down), behaviour in $NETMODE (curable|stuck).
+S=$(cat "$NETSTATE"); M=$(cat "$NETMODE")
+echo "nmcli $*" >> "$NETCALLS"
+case "$*" in
+  "-g ipv4.dhcp-timeout,connection.autoconnect-retries connection show"*) echo 45; echo 4 ;;
+  *"DEVICE,TYPE,STATE device"*) echo "lo:loopback:unmanaged"; [ "$S" = up ] && echo "enp1s0:ethernet:connected" || echo "enp1s0:ethernet:connected (externally)"; echo "wlp2s0:wifi:disconnected" ;;
+  *"NAME,TYPE connection show"*) echo "netplan-enp1s0:802-3-ethernet"; echo "lo:loopback" ;;
+  "device connect enp1s0") if [ "$M" = curable ]; then echo up > "$NETSTATE"; echo "Device 'enp1s0' successfully activated."; else echo "Error: Connection activation failed: IP configuration could not be reserved" >&2; exit 4; fi ;;
+  "connection up"*|"connection add"*) [ "$M" = curable ] || { echo "Error: activation failed" >&2; exit 4; } ;;
+esac
+exit 0

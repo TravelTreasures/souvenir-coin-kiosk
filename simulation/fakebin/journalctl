@@ -1,0 +1,2 @@
+#!/bin/bash
+echo "dhcp4 (enp1s0): request timed out"

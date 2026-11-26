@@ -118,9 +118,24 @@ function getLanIPs(): string[] {
   return ips
 }
 
+/** Config for the web page WITHOUT secrets: no API key, PINs or operator list. */
+function safeConfig(): Record<string, unknown> {
+  const { fleetApiKey: _k, adminPin: _p, operators: _o, ...safe } = getConfigLight() as Record<string, unknown>
+  return safe
+}
+
 export function startAdminServer(mdb: HopperController, nayax: NayaxController): void {
   if (process.env.ADMIN_WEB_ENABLED === 'false') {
     console.log('[web] Admin web server disabled (ADMIN_WEB_ENABLED=false)')
+    return
+  }
+  // SECURITY (audit, v1.21.39): this local web page used to start on EVERY kiosk,
+  // open to the whole network, with the same well-known default password — and
+  // it can change the price and the hopper counts and showed the kiosk's API key
+  // and PINs. Fleet Admin has replaced it. It now starts ONLY when the owner has
+  // deliberately set their own password for it (ADMIN_WEB_PASSWORD).
+  if (!process.env.ADMIN_WEB_PASSWORD || PASSWORD === 'kiosk-admin' || PASSWORD.length < 8) {
+    console.log('[web] Local admin web page is OFF (set ADMIN_WEB_PASSWORD, 8+ characters, to turn it on)')
     return
   }
 
@@ -128,10 +143,7 @@ export function startAdminServer(mdb: HopperController, nayax: NayaxController):
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`)
     const path = url.pathname
 
-    // Permissive CORS so the dashboard works through tunnels/other origins.
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    // No cross-origin access: only the page this server itself serves may call it.
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
       res.end()
@@ -210,14 +222,14 @@ export function startAdminServer(mdb: HopperController, nayax: NayaxController):
       }
 
       if (req.method === 'GET' && path === '/api/config') {
-        sendJson(res, 200, getConfigLight())
+        sendJson(res, 200, safeConfig())
         return
       }
 
       if (req.method === 'POST' && path === '/api/config/price') {
         const body = (await readBody(req)) as { cents?: number }
         if (typeof body.cents === 'number') setPriceCents(body.cents)
-        sendJson(res, 200, getConfigLight())
+        sendJson(res, 200, safeConfig())
         return
       }
 
