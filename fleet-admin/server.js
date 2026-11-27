@@ -114,6 +114,51 @@ const isOnline = (kioskId) => {
 }
 const kioskById = (id) => data().kiosks.find((k) => k.id === id)
 
+// ---- Connection quality ("signal bars") ---------------------------------------
+// How well each kiosk is reaching this server right now: 0–4 bars. Based on what
+// the kiosk reports about its last ~15 check-ins (typical response time and how
+// many failed) — and, for kiosks on an older app that does not report it, on the
+// gaps between the heartbeats this server actually received. It measures the
+// real link (weak signal, a busy tower and a throttled SIM all show), and works
+// the same whatever router a site uses.
+const hbArrivals = new Map() // kioskId -> recent heartbeat arrival times (memory only)
+const HEARTBEAT_EVERY_MS = 20_000
+function noteHeartbeat(kioskId) {
+  const a = hbArrivals.get(kioskId) || []
+  a.push(Date.now())
+  if (a.length > 16) a.shift()
+  hbArrivals.set(kioskId, a)
+}
+function linkQuality(kioskId) {
+  const hb = data().heartbeats[kioskId]
+  if (!hb?.lastSeen) return { bars: 0, label: 'Never connected', ms: null, missed: 0, n: 0 }
+  if (!isOnline(kioskId)) return { bars: 0, label: 'No connection', ms: null, missed: 0, n: 0 }
+  let ms = null, missed = 0, n = 0
+  const r = hb.link
+  if (r && typeof r.n === 'number' && r.n > 0) {
+    ms = typeof r.ms === 'number' ? r.ms : null
+    missed = Math.max(0, Math.min(r.n, Math.round(r.fails || 0)))
+    n = r.n
+  } else {
+    // Older kiosk app: count heartbeats that should have arrived but did not.
+    const a = hbArrivals.get(kioskId) || []
+    for (let i = 1; i < a.length; i++) missed += Math.max(0, Math.round((a[i] - a[i - 1]) / HEARTBEAT_EVERY_MS) - 1)
+    n = Math.max(0, a.length - 1) + missed
+  }
+  const pct = n ? missed / n : 0
+  let bars
+  if (pct === 0 && (ms == null || ms < 800)) bars = 4
+  else if (pct <= 0.1 && (ms == null || ms < 2000)) bars = 3
+  else if (pct <= 0.35 && (ms == null || ms < 6000)) bars = 2
+  else bars = 1
+  // Check-ins that are overdue RIGHT NOW count too (the report above is from
+  // the last one that got through).
+  const quiet = Date.now() - new Date(hb.lastSeen).getTime()
+  if (quiet > 150_000) bars = Math.min(bars, 1)
+  else if (quiet > 70_000) bars = Math.min(bars, 2)
+  return { bars, label: ['No connection', 'Poor', 'Weak', 'Good', 'Excellent'][bars], ms, missed, n }
+}
+
 // Resolve an OTA action's target kiosks from a request body:
 //   { all:true } | { kioskId } | { tag } | { destinationId }
 function otaTargets(b) {
@@ -460,6 +505,7 @@ function kioskSummary(k, pre) {
     location: k.location,
     destination: destById(k.destinationId)?.name || k.destinationId,
     online: isOnline(k.id),
+    link: linkQuality(k.id),
     lastSeen: hb.lastSeen || null,
     operationalStatus: k.operationalStatus,
     appVersion: hb.appVersion || k.appVersion,
@@ -664,7 +710,14 @@ const server = createServer(async (req, res) => {
 
       if (req.method === 'POST' && path === '/api/ingest/heartbeat') {
         const b = await body(req)
+        noteHeartbeat(kiosk.id)
+        // Connection-quality report from the kiosk (numbers only, bounded).
+        const lk = b.link && typeof b.link === 'object' ? b.link : null
+        const link = lk && Number.isFinite(Number(lk.n)) && Number(lk.n) > 0
+          ? { ms: Number.isFinite(Number(lk.ms)) && lk.ms !== null ? Math.max(0, Math.min(120000, Math.round(Number(lk.ms)))) : null, fails: Math.max(0, Math.min(60, Math.round(Number(lk.fails) || 0))), n: Math.max(1, Math.min(60, Math.round(Number(lk.n)))) }
+          : null
         data().heartbeats[kiosk.id] = {
+          ...(link ? { link } : {}),
           lastSeen: new Date().toISOString(),
           hopper1: b.hopper1 ?? null,
           hopper2: b.hopper2 ?? null,
@@ -1505,6 +1558,7 @@ const server = createServer(async (req, res) => {
           ...visible,
           destination: destById(kiosk.destinationId),
           online: isOnline(kiosk.id),
+          link: linkQuality(kiosk.id),
           synced: (kiosk.configVersion ?? 1) === (kiosk.appliedConfigVersion ?? 0),
           health: hb,
           // Open hardware/system alerts for this kiosk (offline, empty, low, faults).

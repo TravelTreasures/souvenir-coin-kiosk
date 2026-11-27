@@ -67,6 +67,7 @@ async function main(): Promise<void> {
   eq('kiosk reports sync OK', cfg.fleetStatus?.state, 'ok')
   let k = await api('/api/kiosks/E2E')
   ok('server sees the kiosk online and in sync', k.online === true && k.synced === true)
+  ok('kiosk reports its connection quality; Fleet Admin shows bars', k.link?.bars >= 3 && k.link.n >= 1 && typeof k.link.ms === 'number', JSON.stringify(k.link))
 
   // ---- remote refills: two in a row ----
   await api('/api/kiosks/E2E/refill', { method: 'POST', body: JSON.stringify({ hopper: 1, quantity: 6 }) })
@@ -153,6 +154,8 @@ async function main(): Promise<void> {
   await stopServer()
   await syncNow(mdb, nayax, 1500)
   eq('server down → kiosk shows "cannot reach server"', getConfig().fleetStatus?.state, 'offline')
+  const kOffline = (await (async () => { try { return await api('/api/kiosks/E2E') } catch { return null } })())
+  void kOffline
   ok('…with a reason', !!getConfig().fleetStatus?.detail, String(getConfig().fleetStatus?.detail))
   r = await buy(1); eq('kiosk still sells with the server down', r.status, 'dispensed')
   r = await buy(1); eq('…and again', r.status, 'dispensed')
@@ -160,6 +163,7 @@ async function main(): Promise<void> {
   await startServer(); await signIn()
   await syncNow(mdb, nayax, 1200); await syncNow(mdb, nayax, 1200)
   eq('server back → kiosk reconnects by itself', getConfig().fleetStatus?.state, 'ok')
+  { const kk = await api('/api/kiosks/E2E'); ok('after an outage the bars drop (missed check-ins are remembered)', kk.link.missed >= 1 && kk.link.bars <= 3, JSON.stringify(kk.link)) }
   const s2 = await api('/api/kiosks/E2E/sales?period=today')
   eq('offline sales arrived exactly once (6 sales, R22.00)', [s2.totalSales, s2.totalRevenue], [6, 2200])
   await syncNow(mdb, nayax, 900)

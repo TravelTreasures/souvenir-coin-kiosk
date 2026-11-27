@@ -118,6 +118,11 @@ await s.open('kiosk K1 overview again', `view={name:'kiosk',id:'K1'};kioskTab='o
 ok('admin: awkward names show as text, exactly as typed', s.d.querySelector('.ptitle')?.textContent === NASTY, s.d.querySelector('.ptitle')?.textContent)
 const upd = await s.open('page "updates" (status wording)', `view={name:'updates'}`, '#view')
 ok('admin: Updates page shows pending for a kiosk not yet on target', /pending/i.test(upd) && /Any time \(when idle\)|only/.test(upd), upd.slice(-300))
+await s.open('fleet (signal bars)', `view={name:'fleet'}`, '#view')
+ok('admin: every kiosk card shows connection bars with a label', s.d.querySelectorAll('.kcard .sig .sigbars i').length === s.d.querySelectorAll('.kcard').length * 4 && [...s.d.querySelectorAll('.kcard .siglbl')].every((x) => x.textContent.length > 2), [...s.d.querySelectorAll('.kcard .siglbl')].map((x) => x.textContent).join(','))
+ok('admin: never-connected kiosk shows 0 bars', [...s.d.querySelectorAll('.kcard')].some((c) => /Never connected/.test(c.textContent) && c.querySelectorAll('.sigbars i.f').length === 0))
+await s.open('kiosk K1 overview (signal bars)', `view={name:'kiosk',id:'K1'};kioskTab='overview'`, '#ktab')
+ok('admin: kiosk page header shows connection bars', s.d.querySelectorAll('#view .kstat .sigbars i').length === 4)
 // reports with a custom range and each period
 for (const p of ['today', 'week', 'month', 'all']) await s.open(`reports period "${p}"`, `view={name:'global'};if(typeof gPeriod!=='undefined')gPeriod='${p}'`, '#view')
 s.close()

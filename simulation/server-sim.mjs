@@ -199,6 +199,19 @@ sa = (await api('/api/system-alerts')).j
 eq('K1 empty → low after partial refill', ty('K1'), ['low_coin_1'])
 eq('all other alerts cleared by themselves', [ty('K2'), ty('K3'), ty('K4'), ty('K5')], [[], [], [], []])
 
+// ---------- 7b. connection-quality bars ----------
+const bars = async (id) => (await api('/api/kiosks')).j.find((k) => k.id === id).link
+await kio(keys.K1, '/api/ingest/heartbeat', hb({ link: { ms: 300, fails: 0, n: 15 } })); eq('bars: fast and no misses = 4 (Excellent)', [(await bars('K1')).bars, (await bars('K1')).label], [4, 'Excellent'])
+await kio(keys.K1, '/api/ingest/heartbeat', hb({ link: { ms: 1500, fails: 1, n: 15 } })); eq('bars: a bit slow, 1 miss = 3 (Good)', (await bars('K1')).bars, 3)
+await kio(keys.K1, '/api/ingest/heartbeat', hb({ link: { ms: 4000, fails: 4, n: 15 } })); eq('bars: slow, several misses = 2 (Weak)', (await bars('K1')).bars, 2)
+await kio(keys.K1, '/api/ingest/heartbeat', hb({ link: { ms: 9000, fails: 10, n: 15 } })); eq('bars: very slow, most missed = 1 (Poor)', (await bars('K1')).bars, 1)
+await kio(keys.K1, '/api/ingest/heartbeat', hb({ link: { ms: 'abc', fails: -5, n: 999999 } })); ok('bars: garbage report cannot break the list', [1, 2, 3, 4].includes((await bars('K1')).bars))
+ok('bars: older kiosk app (no report) that skipped heartbeats shows as poor/weak', (await bars('K2')).bars <= 2 && (await bars('K2')).missed >= 1, J(await bars('K2')))
+{ const k8 = (await api('/api/kiosks', { method: 'POST', body: J({ id: 'K8', name: 'old app' }) })).j; for (let i = 0; i < 3; i++) await kio(k8.apiKey, '/api/ingest/heartbeat', hb()); eq('bars: older kiosk app with steady heartbeats = 4', (await bars('K8')).bars, 4) }
+r = await api('/api/kiosks/K1'); ok('bars: also on the kiosk page', typeof r.j.link?.bars === 'number')
+await api('/api/kiosks', { method: 'POST', body: J({ id: 'K9', name: 'never' }) }); eq('bars: never-connected kiosk = 0', [(await bars('K9')).bars, (await bars('K9')).label], [0, 'Never connected'])
+await kio(keys.K1, '/api/ingest/heartbeat', hb({ link: { ms: 300, fails: 0, n: 15 } }))
+
 // ---------- 8. load + persistence ----------
 const big = []; for (let i = 0; i < 6000; i++) big.push(T('LOAD-' + i, (i % 3) + 1, (i % 3) === 2 ? 300 : 200, 'approved', 'success', -100 - i))
 let t0 = Date.now(); for (let i = 0; i < big.length; i += 200) await kio(keys.K5, '/api/ingest/sync', { transactions: big.slice(i, i + 200), hopperEvents: [] }); const tSync = Date.now() - t0

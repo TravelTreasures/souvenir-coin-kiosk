@@ -138,6 +138,16 @@
   .empty{border:1px dashed var(--line);border-radius:16px}
   .crumbs{margin-bottom:16px}
   .login .card,.login{position:relative}
+  /* connection-quality bars (under the Online / Offline pill) */
+  .kstat{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex:0 0 auto}
+  .sig{display:inline-flex;align-items:center;gap:8px;font-size:.72rem;font-weight:600;color:var(--dim);white-space:nowrap}
+  .sig .sigbars{display:inline-flex;align-items:flex-end;gap:3px;height:16px}
+  .sig .sigbars i{display:block;width:5px;border-radius:2px;background:rgba(255,255,255,.14);transition:background .3s,height .3s}
+  .sig .sigbars i:nth-child(1){height:5px}.sig .sigbars i:nth-child(2){height:8px}.sig .sigbars i:nth-child(3){height:12px}.sig .sigbars i:nth-child(4){height:16px}
+  .sig.q4 .sigbars i.f,.sig.q3 .sigbars i.f{background:var(--green)}
+  .sig.q2 .sigbars i.f{background:var(--amber)}
+  .sig.q1 .sigbars i.f{background:var(--red)}
+  .sig.q4 .siglbl,.sig.q3 .siglbl{color:var(--green)}.sig.q2 .siglbl{color:var(--amber)}.sig.q1 .siglbl{color:var(--red)}
   /* =====================================================================
      v1.20.31 — phone and tablet layout. Desktop is unchanged; everything
      here only applies on touch devices or narrower screens.
@@ -245,7 +255,7 @@
 
 <div id="app" class="hide">
   <div class="topbar">
-    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.37</small></div>
+    <div class="brand">Souvenir Coin Kiosk <small>Fleet Admin · v1.20.38</small></div>
     <div class="row">
       <span id="whoami" class="muted"></span>
       <span id="liveDot" class="pill on">● live</span>
@@ -958,12 +968,20 @@ async function renderFleet(el,isAuto){
 }
 function productCard(title,sales,revenue,foot,opt){opt=opt||{};return `<div class="card pcard ${opt.total?'total':''}"><div class="pc-title"><span>${esc(title)}</span>${opt.tag?`<span class="pc-tag">${esc(opt.tag)}</span>`:''}</div><div class="pc-stats"><div><div class="label">Sales</div><div class="val">${sales}</div></div><div><div class="label">Revenue</div><div class="val">${rand(revenue)}</div></div></div>${foot?`<div class="pc-foot">${foot}</div>`:''}</div>`}
 function metric(label,val,cls){return `<div class="card"><div class="label">${label}</div><div class="val ${cls||''}">${val}</div></div>`}
+// Connection-quality bars: how well the kiosk is reaching this server right now
+// (response time + missed check-ins over the last few minutes). 0 bars = offline.
+function sigBars(k){
+  const l=(k&&k.link)||{bars:0,label:'No connection'};
+  const b=Math.max(0,Math.min(4,l.bars|0));
+  const tip=b===0?(l.label||'No connection'):`Connection: ${l.label}`+(l.ms!=null?` · typical response ${l.ms>=1000?(l.ms/1000).toFixed(1)+' s':l.ms+' ms'}`:'')+(l.n?` · ${l.missed} of ${l.n} recent check-ins missed`:'');
+  return `<span class="sig q${b}" title="${esc(tip)}" aria-label="${esc(tip)}"><span class="sigbars">${[1,2,3,4].map(i=>`<i class="${i<=b?'f':''}"></i>`).join('')}</span><span class="siglbl">${esc(l.label||'')}</span></span>`;
+}
 function kCard(k){
   const h1=k.hopper1, h2=k.hopper2;
   return `<div class="card kcard" onclick="go({name:'kiosk',id:'${k.id}'})">
     <div class="khead">
       <div><div class="kname">${esc(k.name)}</div><div class="kloc">${esc(k.location||k.destination)}</div></div>
-      <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
+      <div class="kstat"><span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>${sigBars(k)}</div>
     </div>
     <div class="row" style="gap:14px">
       <span class="st-${k.operationalStatus}" style="font-size:.82rem;font-weight:700">${stLabel(k.operationalStatus)}</span>
@@ -1011,7 +1029,7 @@ async function renderKiosk(el,id,isAuto){
       <div><h2 class="ptitle">${esc(k.name)}</h2><div class="muted">${esc([k.location,k.destination?.name].filter((x,i,a)=>x&&a.indexOf(x)===i).join(' · '))}</div></div>
       <div class="row" style="gap:8px;align-items:center">
         <span class="js-syncbadge" data-k="${k.id}">${syncBadge(k)}</span>
-        <span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>
+        <div class="kstat"><span class="pill ${k.online?'on':'off'}">${k.online?'● Online':'● Offline'}</span>${sigBars(k)}</div>
       </div>
     </div>
     <div class="tabs">${tabs.map(t=>`<button class="tab ${t===kioskTab?'active':''}" onclick="kioskTab='${t}';render()">${labels[t]}${t==='alerts'&&alertCount?`<span class="badge">${alertCount}</span>`:''}</button>`).join('')}</div>
@@ -1020,7 +1038,7 @@ async function renderKiosk(el,id,isAuto){
   // #ktab content (and its change-signature) survives an unchanged auto-refresh.
   // (Compare a stored signature — NOT el.innerHTML, which the browser normalises
   // on read so it would never match and the frame would always rebuild.)
-  const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,k.synced,k.configVersion,k.appliedConfigVersion,kioskTab,alertCount]);
+  const _fsig=JSON.stringify([k.name,k.location,k.destination&&k.destination.name,k.online,k.synced,k.configVersion,k.appliedConfigVersion,kioskTab,alertCount,k.link&&k.link.bars,k.link&&k.link.label]);
   if(!el.querySelector('#ktab')||el.dataset.kframe!==_fsig){ el.innerHTML=_frame; el.dataset.kframe=_fsig; centreActive(el.querySelector('.tabs')); }
   await renderKioskTab(id,k,alerts,isAuto);
 }

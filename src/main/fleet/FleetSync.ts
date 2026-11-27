@@ -195,6 +195,24 @@ async function fleetFetch(url: string, init: FetchInit = {}, timeoutMs = FETCH_T
   }
 }
 
+// ---------------------------------------------------------------------------
+// Connection quality, for the signal bars in Fleet Admin.
+// Each sync starts with one small request to the server; we time it and note
+// whether it got through, and keep the last 15 (about 5 minutes). The summary
+// rides along in the heartbeat — no extra requests, no extra data. Fleet Admin
+// turns it into bars, so the scale can be tuned there without a new app build.
+// ---------------------------------------------------------------------------
+const LINK_WINDOW = 15
+const linkSamples: Array<{ ok: boolean; ms: number }> = []
+function recordLink(ok: boolean, ms: number): void {
+  linkSamples.push({ ok, ms: Math.max(0, Math.round(ms)) })
+  if (linkSamples.length > LINK_WINDOW) linkSamples.shift()
+}
+function linkReport(): { ms: number | null; fails: number; n: number } {
+  const good = linkSamples.filter((s) => s.ok).map((s) => s.ms).sort((a, b) => a - b)
+  return { ms: good.length ? good[Math.floor(good.length / 2)] : null, fails: linkSamples.length - good.length, n: linkSamples.length }
+}
+
 // One sync pass at a time. A pass "running" for over 3 minutes is stuck, not
 // busy — let a new one start so syncing can never stop for good.
 let syncBusy = false
@@ -319,7 +337,15 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
 
   // 1. Pull config and apply if the server has a newer version.
   try {
-    const res = await fleetFetch(`${base}/api/ingest/config`, { headers })
+    const linkT0 = Date.now()
+    let res: Response
+    try {
+      res = await fleetFetch(`${base}/api/ingest/config`, { headers })
+    } catch (e) {
+      recordLink(false, Date.now() - linkT0)
+      throw e
+    }
+    recordLink(true, Date.now() - linkT0)
     onSyncOk() // any answer at all means this computer's network is working
     if (res.ok) {
       const conf = await res.json()
@@ -497,7 +523,9 @@ async function syncOnce(mdb: HopperController, nayax: NayaxController): Promise<
         hopper2: { status: h2.status, coinCount: h2.coinCount },
         // OTA status so the dashboard can show version + update progress.
         updateStatus: ota.updateStatus,
-        updateError: ota.updateError
+        updateError: ota.updateError,
+        // Connection quality over the last ~5 minutes (see recordLink above).
+        link: linkReport()
       })
     })
   } catch {
